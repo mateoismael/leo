@@ -6,7 +6,7 @@ La opción principal es **Whisper en la computadora → modelo conversacional po
 
 ## Estado
 
-Servidor refactorizado con configuración externa, prueba por texto, prueba con WAV y medición por etapa. Mantiene `/audio` para el firmware recuperado. Se verificó una consulta mínima real a GPT-5 nano y ocho pruebas automatizadas sin proveedores. La clave ya está configurada en el entorno local; el recorrido completo de voz sigue pendiente y requiere descargar el modelo Whisper. No hay validación física del ESP32 ni despliegue en nube.
+Servidor refactorizado con configuración externa, prueba por texto, prueba con WAV y medición por etapa. Mantiene `/audio` para el firmware recuperado. Se verificaron nueve pruebas automatizadas y un recorrido completo simulado: Whisper transcribió la pregunta, GPT-5 nano respondió «Lima» y gTTS generó un WAV válido. La clave está configurada localmente y Whisper base ya está descargado. Falta probar el transporte del firmware ESP32 y el hardware físico; no hay despliegue en nube.
 
 ## Preparación
 
