@@ -24,6 +24,19 @@ class ServerTests(unittest.TestCase):
             assistant.answer('Segunda pregunta')
         self.assertEqual(assistant.history, before)
 
+    def test_streaming_groups_tokens_into_sentences(self):
+        client = Mock()
+        client.chat.completions.create.return_value = iter([
+            SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content='Primera '))]),
+            SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content='frase. '))]),
+            SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content='Segunda.'))]),
+        ])
+        assistant = VoiceAssistant(client)
+        self.assertEqual(list(assistant.answer_sentences('Pregunta')), ['Primera frase.', 'Segunda.'])
+        options = client.chat.completions.create.call_args.kwargs
+        self.assertTrue(options['stream'])
+        self.assertEqual(assistant.history[-1]['content'], 'Primera frase. Segunda.')
+
     def test_nano_omits_unsupported_temperature(self):
         client = Mock()
         client.chat.completions.create.return_value = SimpleNamespace(
@@ -63,6 +76,22 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(result.content, wav)
             fake.process.assert_called_once_with(pcm)
             self.assertEqual(client.post('/audio', headers={'Recording-Status': 'end'}).status_code, 400)
+
+    def test_streaming_protocol_returns_headerless_pcm(self):
+        fake = Mock(model='test')
+        pcm_in = b'\x01\x00' * 16000
+        pcm_out = b'\x02\x00' * 4000
+        fake.prepare_stream.return_value = ('Texto', iter([pcm_out[:2048], pcm_out[2048:]]))
+        with TestClient(create_app(fake)) as client:
+            self.assertEqual(client.post('/audio', content=pcm_in).status_code, 200)
+            result = client.post('/audio', headers={
+                'Recording-Status': 'end', 'Response-Mode': 'stream',
+            })
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.headers['content-type'], 'application/octet-stream')
+            self.assertEqual(result.headers['x-audio-format'], 'pcm-s16le;rate=16000;channels=1')
+            self.assertEqual(result.content, pcm_out)
+            fake.prepare_stream.assert_called_once_with(pcm_in)
 
     def test_processing_failure_is_not_200_audio(self):
         fake = Mock(model='test')

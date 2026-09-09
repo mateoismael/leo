@@ -6,7 +6,7 @@ La opción principal es **Whisper en la computadora → modelo conversacional po
 
 ## Estado
 
-Servidor refactorizado con configuración externa, prueba por texto, prueba con WAV y medición por etapa. Mantiene `/audio` para el firmware recuperado. Se verificaron nueve pruebas automatizadas y un recorrido completo simulado: Whisper transcribió la pregunta, GPT-5 nano respondió «Lima» y gTTS generó un WAV válido. La clave está configurada localmente y Whisper base ya está descargado. Falta probar el transporte del firmware ESP32 y el hardware físico; no hay despliegue en nube.
+Servidor refactorizado con configuración externa, prueba por texto, prueba con WAV, precarga de Whisper y respuesta hablada progresiva. Mantiene el modo WAV original de `/audio` y añade PCM en streaming para el firmware actualizado. Se verificaron once pruebas automatizadas y dos recorridos reales por API. La clave está configurada localmente y Whisper base ya está descargado. Falta compilar y probar el firmware con el ESP32 y el hardware físico; no hay despliegue en nube.
 
 ## Preparación
 
@@ -68,7 +68,7 @@ Crear antes la carpeta `recordings` si no existe.
 
 Escucha por defecto solo en `127.0.0.1:8000`; `/health` comprueba que el proceso responde, no la disponibilidad de proveedores. Para conectar el ESP32 en una red de desarrollo controlada, usar `--host 0.0.0.0`. Copiar `firmware/leov1/config.example.h` a `config.h` y completar red, contraseña y dirección HTTP del servidor.
 
-El endpoint admite bloques PCM16 mono de 16 kHz en POST `/audio` y una petición vacía con `Recording-Status: end`. Devuelve un WAV compatible con la cabecera de 44 bytes esperada por el firmware. Audio inválido devuelve 400, demasiado grande 413, procesamiento ocupado 409 y errores de proveedores 502.
+El endpoint admite bloques PCM16 mono de 16 kHz en POST `/audio` y una petición vacía con `Recording-Status: end`. Sin otra cabecera devuelve el WAV completo compatible con el firmware recuperado. Con `Response-Mode: stream`, transcribe primero y después entrega PCM16 mono de 16 kHz a medida que cada frase queda sintetizada. El firmware actualizado solicita HTTP/1.0 para delimitar el audio mediante el cierre de conexión y reproducirlo sin esperar un WAV completo. Audio inválido devuelve 400, demasiado grande 413, procesamiento ocupado 409 y errores detectados antes de iniciar la respuesta devuelven 502.
 
 Esta compatibilidad es para **un dispositivo y un proceso**, sin autenticación. No usar múltiples workers ni exponer a internet. Los identificadores de grabación, recuperación de respuestas tras timeout y limpieza de grabaciones abandonadas siguen pendientes. El firmware antiguo espera solo 10 segundos para la respuesta y podría agotar su timeout; la primera prueba debe hacerse por CLI.
 
@@ -79,7 +79,9 @@ Esta compatibilidad es para **un dispositivo y un proceso**, sin autenticación.
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Las pruebas sustituyen proveedores externos: verifican historial, formato de audio y protocolo HTTP sin coste de API.
+Las pruebas sustituyen proveedores externos: verifican historial, segmentación por frases, formato de audio y ambos modos del protocolo HTTP sin coste de API.
+
+El estado detallado, las mediciones de streaming, sus límites y el orden de trabajo están en [Estado y próximos pasos](docs/estado-y-proximos-pasos.md).
 
 ## Organización y procedencia
 

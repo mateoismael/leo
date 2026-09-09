@@ -35,7 +35,7 @@ bool microphoneEnabled = false;
 bool speakerEnabled = false;
 
 // Timeouts y reintentos
-const int HTTP_TIMEOUT = 10000;  // 10 segundos
+const int HTTP_TIMEOUT = 20000;  // Incluye espera hasta el primer fragmento de voz
 const int MAX_RETRIES = 3;
 
 void enableMicrophone() {
@@ -151,7 +151,7 @@ void process32to16(uint32_t* samples32, int16_t* samples16, size_t count) {
     }
 }
 
-bool playAudioFromServer(WiFiClient* client) {
+bool playAudioFromServer(WiFiClient* client, bool hasWavHeader = true) {
     if (!client) {
         Serial.println("❌ Error: Cliente nulo");
         return false;
@@ -161,14 +161,15 @@ bool playAudioFromServer(WiFiClient* client) {
     uint8_t buffer[bufferSize];
     size_t bytesWritten = 0;
     int totalBytesRead = 0;
-    int headerSize = 44;  // Tamaño del header WAV
+    int headerSize = hasWavHeader ? 44 : 0;
     unsigned long startTime = millis();
 
     Serial.println("⏳ Esperando datos de audio...");
     
     // Esperar datos disponibles con timeout aumentado
     unsigned long timeout = millis() + 10000;  // 10 segundos de timeout
-    while (client->available() < headerSize) {
+    int minimumBytes = hasWavHeader ? headerSize : 1;
+    while (client->available() < minimumBytes) {
         if (millis() > timeout) {
             Serial.println("❌ Timeout esperando header");
             return false;
@@ -176,12 +177,13 @@ bool playAudioFromServer(WiFiClient* client) {
         delay(10);
     }
 
-    // Mostrar información del header WAV
-    Serial.println("📥 Header WAV recibido");
-    
-    // Saltar header WAV
-    for (int i = 0; i < headerSize; i++) {
-        client->read();
+    if (hasWavHeader) {
+        Serial.println("📥 Header WAV recibido");
+        for (int i = 0; i < headerSize; i++) {
+            client->read();
+        }
+    } else {
+        Serial.println("📥 Primer fragmento PCM recibido");
     }
 
     Serial.println("▶️ Iniciando reproducción...");
@@ -189,7 +191,13 @@ bool playAudioFromServer(WiFiClient* client) {
     enableSpeaker();
 
     while (client->available() || client->connected()) {
-        int bytesRead = client->read(buffer, bufferSize);
+        int availableBytes = client->available();
+        if (availableBytes <= 0) {
+            delay(2);
+            yield();
+            continue;
+        }
+        int bytesRead = client->read(buffer, min(availableBytes, bufferSize));
         
         if (bytesRead > 0) {
             totalBytesRead += bytesRead;
@@ -215,7 +223,7 @@ bool playAudioFromServer(WiFiClient* client) {
         }
         
         // Verificar timeout global
-        if (millis() - startTime > 30000) {  // 30 segundos máximo
+        if (millis() - startTime > 60000) {  // 60 segundos máximo
             Serial.println("⚠️ Timeout global de reproducción");
             break;
         }
@@ -279,17 +287,22 @@ void loop() {
             while (retryCount < MAX_RETRIES && !success) {
                 HTTPClient http;
                 http.begin(serverUrl);
+                // HTTP/1.0 recibe PCM hasta que el servidor cierre la conexión,
+                // sin codificación chunked entre los datos de audio.
+                http.useHTTP10(true);
                 http.setTimeout(HTTP_TIMEOUT);
                 http.addHeader("Content-Type", "application/octet-stream");
                 http.addHeader("Recording-Status", "end");
+                http.addHeader("Response-Mode", "stream");
                 
                 int httpCode = http.POST("");
                 if (httpCode == HTTP_CODE_OK) {
                     Serial.println("✅ Respuesta del servidor recibida");
                     WiFiClient* stream = http.getStreamPtr();
                     if (stream) {
-                        success = playAudioFromServer(stream);
+                        success = playAudioFromServer(stream, false);
                     }
+                    http.end();
                     break;
                 } else {
                     Serial.printf("❌ Error HTTP final: %d (Intento %d de %d)\n", 

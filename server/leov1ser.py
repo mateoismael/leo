@@ -5,6 +5,8 @@ import importlib.util
 import json
 import logging
 import os
+import queue
+import re
 import shutil
 import subprocess
 import tempfile
@@ -16,6 +18,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,7 +67,7 @@ class VoiceAssistant:
         self.model = os.getenv('OPENAI_MODEL', 'gpt-5-nano') if self.provider == 'openai' else os.getenv('OPENROUTER_MODEL', '')
         self.usage = {}
 
-    def answer(self, text):
+    def _request(self, text, stream=False):
         text = text.strip()
         if not text or len(text) > 4000:
             raise ValueError('La pregunta debe contener entre 1 y 4000 caracteres.')
@@ -79,20 +82,25 @@ class VoiceAssistant:
         if not self.model:
             raise PipelineError('Configura el identificador del modelo del proveedor en .env.')
         messages = [
-            {'role': 'system', 'content': 'Responde en español para un asistente de voz. Usa como máximo 50 palabras, frases completas y sin formato Markdown.'},
+            {'role': 'system', 'content': 'Responde en español para un asistente de voz. Usa como máximo 50 palabras, frases completas, sin listas, viñetas ni formato Markdown.'},
             *self.history[-10:],
             {'role': 'user', 'content': text},
         ]
         try:
-            options = {'model': self.model, 'messages': messages}
+            options = {'model': self.model, 'messages': messages, 'stream': stream}
+            if stream and self.provider == 'openai':
+                options['stream_options'] = {'include_usage': True}
             if self.provider == 'openai' and self.model.startswith('gpt-5'):
                 effort = 'minimal' if self.model.startswith('gpt-5-nano') else 'none'
                 options.update(max_completion_tokens=1024, reasoning_effort=effort)
             else:
                 options.update(max_tokens=180, temperature=0.5)
-            result = self.client.chat.completions.create(**options)
+            return self.client.chat.completions.create(**options)
         except Exception as exc:
             raise PipelineError('La API no respondió correctamente. Comprueba clave, acceso al modelo y conexión.') from exc
+
+    def answer(self, text):
+        result = self._request(text)
         usage = getattr(result, 'usage', None)
         self.usage = usage.model_dump() if usage is not None and hasattr(usage, 'model_dump') else {}
         answer = (result.choices[0].message.content or '').strip()
@@ -102,6 +110,44 @@ class VoiceAssistant:
             {'role': 'user', 'content': text}, {'role': 'assistant', 'content': answer},
         ])[-10:]
         return answer
+
+    def answer_sentences(self, text):
+        """Entrega frases a medida que llegan los tokens del modelo."""
+        try:
+            events = self._request(text, stream=True)
+            pending = ''
+            complete = []
+            for event in events:
+                usage = getattr(event, 'usage', None)
+                if usage is not None and hasattr(usage, 'model_dump'):
+                    self.usage = usage.model_dump()
+                choices = getattr(event, 'choices', None) or []
+                piece = getattr(getattr(choices[0], 'delta', None), 'content', None) if choices else None
+                if not isinstance(piece, str) or not piece:
+                    continue
+                pending += piece
+                while True:
+                    match = re.match(r'(?s)^(.+?[.!?…]+)(?:\s+|$)', pending)
+                    if not match:
+                        break
+                    sentence = match.group(1).strip()
+                    pending = pending[match.end():]
+                    if sentence:
+                        complete.append(sentence)
+                        yield sentence
+            if pending.strip():
+                complete.append(pending.strip())
+                yield pending.strip()
+        except PipelineError:
+            raise
+        except Exception as exc:
+            raise PipelineError('La transmisión de la API se interrumpió.') from exc
+        answer = ' '.join(complete).strip()
+        if not answer:
+            raise PipelineError('La API devolvió una respuesta vacía.')
+        self.history = (self.history + [
+            {'role': 'user', 'content': text.strip()}, {'role': 'assistant', 'content': answer},
+        ])[-10:]
 
     def load_transcriber(self):
         if self.whisper is None:
@@ -119,7 +165,7 @@ class VoiceAssistant:
             raise PipelineError('No se detectó voz reconocible en la grabación.')
         return text
 
-    def speak(self, text):
+    def synthesize_pcm(self, text):
         if not shutil.which('ffmpeg'):
             raise PipelineError('FFmpeg no está disponible en PATH.')
         provider = os.getenv('TTS_PROVIDER', 'gtts').strip().lower()
@@ -159,7 +205,49 @@ class VoiceAssistant:
             raise PipelineError(f'La generación de voz con {provider} agotó el tiempo.') from exc
         except subprocess.CalledProcessError as exc:
             raise PipelineError(f'La generación de voz con {provider} falló.') from exc
-        return pcm_to_wav(result.stdout)
+        pcm_to_wav(result.stdout)
+        return result.stdout
+
+    def speak(self, text):
+        return pcm_to_wav(self.synthesize_pcm(text))
+
+    def stream_speech(self, text, chunk_size=2048):
+        """Solapa la recepción del modelo con la síntesis y entrega PCM incremental."""
+        sentences = queue.Queue(maxsize=4)
+        finished = object()
+
+        def receive_text():
+            try:
+                for sentence in self.answer_sentences(text):
+                    sentences.put(sentence)
+            except Exception as exc:
+                sentences.put(exc)
+            finally:
+                sentences.put(finished)
+
+        worker = threading.Thread(target=receive_text, name='respuesta-stream', daemon=True)
+        worker.start()
+        first = True
+        while True:
+            item = sentences.get()
+            if item is finished:
+                break
+            if isinstance(item, Exception):
+                raise item
+            pcm = self.synthesize_pcm(item)
+            if not first:
+                yield b'\x00\x00' * int(RATE * 0.08)
+            first = False
+            for offset in range(0, len(pcm), chunk_size):
+                yield pcm[offset:offset + chunk_size]
+
+    def prepare_stream(self, pcm):
+        wav = pcm_to_wav(pcm)
+        with tempfile.TemporaryDirectory(prefix='pulsera-') as folder:
+            path = Path(folder) / 'entrada.wav'
+            path.write_bytes(wav)
+            text = self.transcribe(path)
+        return text, self.stream_speech(text)
 
     def process(self, pcm):
         wav = pcm_to_wav(pcm)
@@ -227,6 +315,17 @@ def create_app(assistant=None):
                 except ValueError as exc:
                     raise HTTPException(400, str(exc)) from exc
                 try:
+                    if request.headers.get('Response-Mode', '').strip().lower() == 'stream':
+                        _, pcm_stream = await run_in_threadpool(assistant.prepare_stream, pcm)
+                        return StreamingResponse(
+                            pcm_stream,
+                            media_type='application/octet-stream',
+                            headers={
+                                'Connection': 'close',
+                                'Cache-Control': 'no-store',
+                                'X-Audio-Format': 'pcm-s16le;rate=16000;channels=1',
+                            },
+                        )
                     wav, _ = await run_in_threadpool(assistant.process, pcm)
                 except PipelineError as exc:
                     raise HTTPException(502, str(exc)) from exc

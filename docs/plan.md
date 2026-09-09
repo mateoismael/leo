@@ -9,11 +9,12 @@ Decisión actual: comenzar con IA conversacional por API. Las dos alternativas l
 - Implementado: CLI con `--text`, `--audio` y `--check`, sin ESP32.
 - Verificada una consulta mínima real a GPT-5 nano.
 - Verificado el recorrido completo sin ESP32 con voz sintetizada: Whisper transcribió correctamente, GPT-5 nano respondió «Lima» y gTTS produjo el WAV final. Tiempos de la primera ejecución: 5.891 s de transcripción, 3.522 s de API y 0.548 s de voz. Uso: 47 tokens de entrada y 11 de salida; coste estimado de la llamada: USD 0.00000675 según la tarifa consultada.
-- Siguiente: probar el servidor en ejecución y simular el envío HTTP por bloques y la señal de fin del firmware.
+- Verificado el envío HTTP por bloques, la señal de fin y los modos de respuesta WAV y PCM progresivo.
 - Integrado y probado Chatterbox Multilingual como alternativa local. gTTS continúa como salida predeterminada por su menor latencia.
 - Prueba real de gTTS: generó 2.42 segundos de audio compatible en 1.44 segundos, sin llamada al modelo conversacional.
 - El servidor precarga Whisper antes de aceptar audio y `/health` indica si quedó cargado. Esto traslada el arranque lento al inicio del servidor; la transcripción caliente medida sigue siendo aproximadamente 0.44 s.
-- Implementado: pregunta sin duplicación, estados HTTP de error y validación WAV/PCM. Nueve pruebas automatizadas con proveedores sustituidos y validación completa por CLI.
+- Implementado: pregunta sin duplicación, estados HTTP de error, validación WAV/PCM y streaming por frases. Once pruebas automatizadas con proveedores sustituidos.
+- Una respuesta real de tres frases entregó el primer audio en 4.580 s y terminó de generarse en 8.089 s: la reproducción puede adelantarse 3.509 s. Detalles y límites en [Estado y próximos pasos](estado-y-proximos-pasos.md).
 
 ## 2. Comunicación y hardware existente
 
