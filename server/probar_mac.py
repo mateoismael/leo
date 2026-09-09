@@ -9,7 +9,7 @@ import wave
 from pathlib import Path
 
 from leov1ser import ROOT, RATE, VoiceAssistant, read_wav
-from microphone import MicrophoneError, record_question
+from microphone import MicrophoneError, wait_and_record
 
 
 def play_stream(chunks, output, started):
@@ -99,12 +99,10 @@ def main():
             print('Micrófono:', info['name'])
             print('Cargando Whisper una sola vez…', flush=True)
             assistant.load_transcriber()
-            print('Listo. Cada pregunta usa la API. /salir termina.', flush=True)
+            print('Listo. Cada pregunta usa la API. q termina.', flush=True)
             while True:
-                if input('\nPulsa Enter para grabar, o escribe /salir: ').strip() == '/salir':
-                    break
                 try:
-                    pcm = record_question(args.device)
+                    pcm = wait_and_record(args.device)
                 except MicrophoneError as exc:
                     print(str(exc), flush=True)
                     continue

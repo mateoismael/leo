@@ -75,7 +75,7 @@ Se añadió `server/probar_mac.py`. Desde la raíz del repositorio:
 .venv/bin/python server/probar_mac.py
 ```
 
-Ahora permite hablar por el micrófono de la Mac: Enter inicia, Enter termina; `/salir` sale y Ctrl+C interrumpe la prueba. Cada pregunta llama a la API y usa gTTS. Para escribir en lugar de hablar, usar `--chat`. El historial se mantiene mientras siga abierto y el último audio se guarda en `recordings/prueba-mac.wav`.
+Ahora permite hablar por el micrófono de la Mac: ESPACIO inicia, ESPACIO termina; `q` sale y Ctrl+C interrumpe la prueba. Cada pregunta llama a la API y usa gTTS. Para escribir en lugar de hablar, usar `--chat`. El historial se mantiene mientras siga abierto y el último audio se guarda en `recordings/prueba-mac.wav`.
 
 ```sh
 # Sin API ni internet: reproduce una respuesta ya guardada.

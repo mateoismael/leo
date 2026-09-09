@@ -101,7 +101,7 @@ Se mantiene Chat Completions. Ver [comparación de modelos y costes](docs/modelo
 .venv/bin/python server/probar_mac.py
 ```
 
-El modo predeterminado ahora usa el micrófono de la Mac. Pulsa Enter para grabar, habla y pulsa Enter para terminar. Escucha la respuesta y repite; `/salir` termina. Si macOS solicita permiso de micrófono para Terminal, permítelo. Whisper se carga una vez antes de la primera grabación. Cada pregunta usa la API y gTTS. Para el modo escrito, añade `--chat`. Para probar un WAV existente con Whisper, usa `--audio recordings/pregunta-simulada.wav`. Para reproducir un audio sin llamadas externas, usa `--replay recordings/respuesta-streaming.wav`.
+El modo predeterminado ahora usa el micrófono de la Mac. Pulsa ESPACIO para grabar, habla y pulsa ESPACIO otra vez para terminar. Escucha la respuesta y repite; `q` termina. Son dos pulsaciones, no mantener la tecla apretada. Si macOS solicita permiso de micrófono para Terminal, permítelo. Whisper se carga una vez antes de la primera grabación. Cada pregunta usa la API y gTTS. Para el modo escrito, añade `--chat`. Para probar un WAV existente con Whisper, usa `--audio recordings/pregunta-simulada.wav`. Para reproducir un audio sin llamadas externas, usa `--replay recordings/respuesta-streaming.wav`.
 
 Instalación del soporte de micrófono (ya instalado en esta Mac):
 

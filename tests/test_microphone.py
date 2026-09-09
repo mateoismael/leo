@@ -23,7 +23,7 @@ class CaptureTests(unittest.TestCase):
         with patch('sounddevice.query_devices', return_value={'default_samplerate': 48000}), \
              patch('sounddevice.RawInputStream', FakeStream), \
              patch('server.microphone.select.select', return_value=([True], [], [])):
-            return record_question(input_stream=io.StringIO('\n'))
+            return record_question(input_stream=io.StringIO(' '))
 
     def test_native_audio_is_resampled_to_16k(self):
         pcm = self.capture(0.5)
