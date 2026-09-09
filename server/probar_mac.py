@@ -9,6 +9,7 @@ import wave
 from pathlib import Path
 
 from leov1ser import ROOT, RATE, VoiceAssistant, read_wav
+from microphone import MicrophoneError, record_question
 
 
 def play_stream(chunks, output, started):
@@ -72,8 +73,16 @@ def main():
     mode.add_argument('--text', help='Una pregunta escrita: API y respuesta hablada')
     mode.add_argument('--audio', type=Path, help='Pregunta WAV PCM16 mono 16 kHz: Whisper, API y voz')
     mode.add_argument('--replay', type=Path, help='Reproducir WAV existente; sin internet ni consumo')
+    mode.add_argument('--mic', action='store_true', help='Conversar por el micrófono (modo predeterminado)')
+    mode.add_argument('--chat', action='store_true', help='Conversar escribiendo')
+    mode.add_argument('--list-mics', action='store_true', help='Mostrar dispositivos de audio')
+    parser.add_argument('--device', type=int, help='Índice del micrófono; por defecto el del sistema')
     parser.add_argument('--output', type=Path, default=ROOT / 'recordings/prueba-mac.wav')
     args = parser.parse_args()
+    if args.list_mics:
+        import sounddevice as sd
+        print(sd.query_devices())
+        return
     source = args.audio or args.replay
     if source and source.resolve() == args.output.resolve():
         parser.error('La salida no puede sobrescribir el audio de entrada.')
@@ -81,7 +90,31 @@ def main():
         parser.error('Falta ffplay para reproducir audio.')
     assistant = VoiceAssistant()
     try:
-        if args.replay:
+        if args.mic or not (args.text is not None or args.audio or args.replay or args.chat):
+            import sounddevice as sd
+            try:
+                info = sd.query_devices(args.device, 'input')
+            except sd.PortAudioError as exc:
+                raise MicrophoneError('No hay un micrófono disponible. Revisa la entrada de sonido de macOS.') from exc
+            print('Micrófono:', info['name'])
+            print('Cargando Whisper una sola vez…', flush=True)
+            assistant.load_transcriber()
+            print('Listo. Cada pregunta usa la API. /salir termina.', flush=True)
+            while True:
+                if input('\nPulsa Enter para grabar, o escribe /salir: ').strip() == '/salir':
+                    break
+                try:
+                    pcm = record_question(args.device)
+                except MicrophoneError as exc:
+                    print(str(exc), flush=True)
+                    continue
+                started = time.perf_counter()
+                text, chunks = assistant.prepare_stream(pcm)
+                print('Entendido:', text, flush=True)
+                play_stream(chunks, args.output, started)
+                print('Respuesta:', assistant.history[-1]['content'])
+                print('Uso API:', json.dumps(assistant.usage))
+        elif args.replay:
             pcm = read_wav(args.replay)
             chunks = (pcm[i:i + 2048] for i in range(0, len(pcm), 2048))
             play_stream(chunks, args.output, time.perf_counter())
@@ -112,6 +145,10 @@ def main():
                     break
     except (KeyboardInterrupt, EOFError):
         print('\nPrueba terminada.')
+    except MicrophoneError as exc:
+        parser.exit(1, str(exc) + '\n')
+    except ImportError:
+        parser.exit(1, 'Instala las dependencias: .venv/bin/python -m pip install -r server/requirements-mac.in\n')
     except Exception as exc:
         # Los SDK pueden incluir datos de peticiones en excepciones: no imprimirlos.
         parser.exit(1, f'No se pudo completar la prueba ({type(exc).__name__}). Revisa conexión y salida de audio.\n')

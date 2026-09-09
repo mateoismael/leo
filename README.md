@@ -6,7 +6,7 @@ La opción principal es **Whisper en la computadora → modelo conversacional po
 
 ## Estado
 
-Servidor refactorizado con configuración externa, prueba por texto, prueba con WAV, precarga de Whisper y respuesta hablada progresiva. Mantiene el modo WAV original de `/audio` y añade PCM en streaming para el firmware actualizado. Se verificaron once pruebas automatizadas y dos recorridos reales por API. La clave está configurada localmente y Whisper base ya está descargado. Falta compilar y probar el firmware con el ESP32 y el hardware físico; no hay despliegue en nube.
+Servidor refactorizado con configuración externa, prueba por texto, prueba con WAV, precarga de Whisper y respuesta hablada progresiva. Mantiene el modo WAV original de `/audio` y añade PCM en streaming para el firmware actualizado. Se verificaron dieciséis pruebas automatizadas y dos recorridos reales por API. La clave está configurada localmente y Whisper base ya está descargado. Falta compilar y probar el firmware con el ESP32 y el hardware físico; no hay despliegue en nube.
 
 ## Preparación
 
@@ -101,4 +101,12 @@ Se mantiene Chat Completions. Ver [comparación de modelos y costes](docs/modelo
 .venv/bin/python server/probar_mac.py
 ```
 
-Escribe una pregunta y pulsa Enter: la respuesta se reproduce por los altavoces con ffplay. `/salir` termina. Usa la API y gTTS; no captura el micrófono. Para probar un WAV existente con Whisper, usa `--audio recordings/pregunta-simulada.wav`. Para reproducir un audio sin llamadas externas, usa `--replay recordings/respuesta-streaming.wav`.
+El modo predeterminado ahora usa el micrófono de la Mac. Pulsa Enter para grabar, habla y pulsa Enter para terminar. Escucha la respuesta y repite; `/salir` termina. Si macOS solicita permiso de micrófono para Terminal, permítelo. Whisper se carga una vez antes de la primera grabación. Cada pregunta usa la API y gTTS. Para el modo escrito, añade `--chat`. Para probar un WAV existente con Whisper, usa `--audio recordings/pregunta-simulada.wav`. Para reproducir un audio sin llamadas externas, usa `--replay recordings/respuesta-streaming.wav`.
+
+Instalación del soporte de micrófono (ya instalado en esta Mac):
+
+```sh
+.venv/bin/python -m pip install -r server/requirements-mac.in
+```
+
+Si no hay entrada de audio, revisa Ajustes del Sistema > Sonido > Entrada y Privacidad y seguridad > Micrófono. `--list-mics` muestra dispositivos; `--device 0` permite elegir uno por su índice. Grabación máxima: 60 segundos. El micrófono está cerrado mientras se reproduce la respuesta; aún no hay interrupción automática por voz.

@@ -15,7 +15,7 @@ Construir una pulsera de voz sin cámara. El ESP32 captura y reproduce audio; un
 - La respuesta del modelo se recibe token por token y se divide en frases.
 - Un hilo sigue recibiendo texto mientras gTTS sintetiza las frases disponibles.
 - El firmware actualizado solicita el flujo mediante HTTP/1.0 y reproduce los bytes PCM conforme llegan.
-- Once pruebas automatizadas validan el servidor sin consumir API.
+- Dieciséis pruebas automatizadas validan servidor y captura simulada sin consumir API.
 
 ## Pruebas reales
 
@@ -75,7 +75,7 @@ Se añadió `server/probar_mac.py`. Desde la raíz del repositorio:
 .venv/bin/python server/probar_mac.py
 ```
 
-Permite escribir preguntas y escuchar respuestas progresivas con ffplay; `/salir` termina y Ctrl+C interrumpe la prueba. Cada pregunta llama a la API y usa gTTS. No escucha el micrófono en este modo. El historial se mantiene mientras siga abierto y el último audio se guarda en `recordings/prueba-mac.wav`.
+Ahora permite hablar por el micrófono de la Mac: Enter inicia, Enter termina; `/salir` sale y Ctrl+C interrumpe la prueba. Cada pregunta llama a la API y usa gTTS. Para escribir en lugar de hablar, usar `--chat`. El historial se mantiene mientras siga abierto y el último audio se guarda en `recordings/prueba-mac.wav`.
 
 ```sh
 # Sin API ni internet: reproduce una respuesta ya guardada.
@@ -98,3 +98,9 @@ Interrupción automática de voz (barge-in), propuesta para después de validar 
 4. Conservar en el historial qué parte de la respuesta se escuchó y añadir la corrección del usuario antes de generar la siguiente respuesta. Actualmente se guarda el texto generado completo, no el audio efectivamente escuchado.
 
 Esto mejora la naturalidad y permite correcciones, pero no acelera por sí solo la API. No se incorpora escucha permanente en esta fase. Referencia consultada: https://elevenlabs.io/docs/eleven-agents/customization/conversation-flow
+
+## Captura del micrófono implementada
+
+Se instaló sounddevice 0.5.6 en el entorno local. macOS reconoce el micrófono integrado (índice 0) y las bocinas (índice 1). La captura usa la frecuencia nativa del dispositivo, mono PCM16, y FFmpeg convierte a 16 kHz. Whisper permanece cargado durante la conversación. La captura se cierra antes de transcribir y reproducir la respuesta. El límite es 60 segundos; errores de captura o grabaciones demasiado cortas no se envían a la API.
+
+Se verificaron 16 pruebas: incluyen conversión real de PCM simulado de 48 a 16 kHz, rechazo de grabaciones cortas y rechazo de pérdida de muestras. La enumeración de dispositivos se probó fuera del sandbox. Falta que el usuario permita el micrófono para Terminal y pruebe su voz; no se grabó el entorno durante estas verificaciones ni se hicieron nuevas llamadas pagadas. No se ha medido aún la latencia acústica completa.
