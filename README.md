@@ -28,7 +28,7 @@ Para procesar audio, instalar además:
 .venv/bin/python -m pip install -r server/requirements-audio.in
 ```
 
-FFmpeg debe estar instalado y disponible en PATH. Whisper descarga el modelo la primera vez que se usa; esto necesita conexión y espacio local. No se descarga al iniciar el servidor ni al probar por texto.
+FFmpeg debe estar instalado y disponible en PATH. Whisper descarga el modelo la primera vez que se usa; esto necesita conexión y espacio local. Al levantar el servidor, `PRELOAD_WHISPER=true` lo carga antes de aceptar audio y evita que la primera pregunta pague ese tiempo de arranque. La prueba por texto no carga Whisper.
 
 ## Probar sin ESP32
 

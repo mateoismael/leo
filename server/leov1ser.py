@@ -1,7 +1,9 @@
 """Asistente de voz: Whisper local, respuesta por API y voz con gTTS."""
 import argparse
+from contextlib import asynccontextmanager
 import importlib.util
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -21,6 +23,7 @@ load_dotenv(ROOT / '.env')
 RATE = 16000
 MAX_SECONDS = 60
 MAX_BYTES = RATE * 2 * MAX_SECONDS
+LOGGER = logging.getLogger('pulsera-voz')
 
 
 class PipelineError(Exception):
@@ -100,13 +103,17 @@ class VoiceAssistant:
         ])[-10:]
         return answer
 
-    def transcribe(self, wav_path):
+    def load_transcriber(self):
         if self.whisper is None:
             try:
                 import whisper
             except ImportError as exc:
                 raise PipelineError('Instala server/requirements-audio.in para usar Whisper.') from exc
             self.whisper = whisper.load_model(os.getenv('WHISPER_MODEL', 'base'))
+        return self.whisper
+
+    def transcribe(self, wav_path):
+        self.load_transcriber()
         text = self.whisper.transcribe(str(wav_path), language='es', fp16=False)['text'].strip()
         if not text:
             raise PipelineError('No se detectó voz reconocible en la grabación.')
@@ -173,14 +180,30 @@ class VoiceAssistant:
 
 
 def create_app(assistant=None):
-    app = FastAPI(title='Pulsera de voz — desarrollo local')
+    owns_assistant = assistant is None
     assistant = assistant or VoiceAssistant()
     buffer = bytearray()
     lock = threading.Lock()
 
+    @asynccontextmanager
+    async def lifespan(_app):
+        if owns_assistant and os.getenv('PRELOAD_WHISPER', 'true').strip().lower() in ('1', 'true', 'yes', 'si'):
+            start = time.perf_counter()
+            LOGGER.info('Cargando Whisper %s antes de aceptar audio...', os.getenv('WHISPER_MODEL', 'base'))
+            await run_in_threadpool(assistant.load_transcriber)
+            LOGGER.info('Whisper listo en %.2f segundos.', time.perf_counter() - start)
+        yield
+
+    app = FastAPI(title='Pulsera de voz — desarrollo local', lifespan=lifespan)
+
     @app.get('/health')
     def health():
-        return {'status': 'ok', 'modo': 'api', 'modelo': assistant.model}
+        return {
+            'status': 'ok',
+            'modo': 'api',
+            'modelo': assistant.model,
+            'whisper_cargado': assistant.whisper is not None if isinstance(assistant, VoiceAssistant) else None,
+        }
 
     @app.post('/audio')
     async def audio(request: Request):

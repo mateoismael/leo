@@ -12,6 +12,7 @@ Decisión actual: comenzar con IA conversacional por API. Las dos alternativas l
 - Siguiente: probar el servidor en ejecución y simular el envío HTTP por bloques y la señal de fin del firmware.
 - Integrado y probado Chatterbox Multilingual como alternativa local. gTTS continúa como salida predeterminada por su menor latencia.
 - Prueba real de gTTS: generó 2.42 segundos de audio compatible en 1.44 segundos, sin llamada al modelo conversacional.
+- El servidor precarga Whisper antes de aceptar audio y `/health` indica si quedó cargado. Esto traslada el arranque lento al inicio del servidor; la transcripción caliente medida sigue siendo aproximadamente 0.44 s.
 - Implementado: pregunta sin duplicación, estados HTTP de error y validación WAV/PCM. Nueve pruebas automatizadas con proveedores sustituidos y validación completa por CLI.
 
 ## 2. Comunicación y hardware existente
