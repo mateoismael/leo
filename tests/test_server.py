@@ -6,6 +6,7 @@ import wave
 
 from fastapi.testclient import TestClient
 from server.leov1ser import VoiceAssistant, PipelineError, pcm_to_wav, create_app, MAX_BYTES
+from server.tts_chatterbox import split_text
 
 
 class ServerTests(unittest.TestCase):
@@ -85,6 +86,11 @@ class ServerTests(unittest.TestCase):
         with TestClient(create_app(fake)) as client:
             self.assertEqual(client.get('/health').json()['status'], 'ok')
             fake.process.assert_not_called()
+
+    def test_chatterbox_text_is_split_at_sentence_boundaries(self):
+        chunks = split_text('Primera frase. ' + 'Segunda frase, ' * 30, limit=80)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(chunk.strip() for chunk in chunks))
 
 
 if __name__ == '__main__':

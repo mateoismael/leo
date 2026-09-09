@@ -8,6 +8,7 @@ Decisión actual: comenzar con IA conversacional por API. Las dos alternativas l
 - Implementado: configuración externa y etapas separadas de transcripción, conversación y voz.
 - Implementado: CLI con `--text`, `--audio` y `--check`, sin ESP32.
 - Verificada una consulta mínima real a GPT-5 nano. Pendiente: recorrido completo de voz y tiempos por etapa, limitando las pruebas a las necesarias por presupuesto de aproximadamente USD 3.
+- Integrado y probado Chatterbox Multilingual como síntesis local gratuita. Pendiente: mantener el modelo cargado entre respuestas para reducir la espera.
 - Implementado: pregunta sin duplicación, estados HTTP de error y validación WAV/PCM. Pruebas automatizadas con proveedores sustituidos; validación real pendiente.
 
 ## 2. Comunicación y hardware existente

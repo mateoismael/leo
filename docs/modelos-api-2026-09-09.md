@@ -15,7 +15,7 @@ Tarifas de texto por millón de tokens, entrada no almacenada en caché y salida
 
 GPT-5 nano aparece deprecado en su ficha; es una elección temporal para pruebas económicas, no una garantía de continuidad. La menor tarifa no garantiza el menor coste por respuesta: los tokens de razonamiento se suman al consumo. El código utiliza esfuerzo mínimo y un tope de 1024 tokens de completado para ese candidato, que incluye razonamiento. Una respuesta vacía por presupuesto insuficiente debe registrarse como fallo; no aumentar el presupuesto a ciegas.
 
-Los modelos de texto de esta tabla no procesan audio directamente. Ruta elegida: Whisper base en la computadora → modelo por API → gTTS. Whisper local no factura minutos a OpenAI, aunque consume recursos de la máquina. gTTS usa un servicio externo; no hace a la solución offline.
+Los modelos de texto de esta tabla no procesan audio directamente. Ruta elegida: Whisper base en la computadora → modelo por API → Chatterbox Multilingual local. Whisper y Chatterbox no facturan minutos a OpenAI, aunque consumen recursos de la máquina. gTTS queda como respaldo externo.
 
 Ejemplo ilustrativo: 1000 consultas con 500 tokens de entrada y 100 tokens facturados de salida cada una cuestan USD 0.065 con GPT-5 nano, USD 0.135 con GPT-4o mini y USD 0.22 con Luna. No incluye razonamiento adicional, historial superior al supuesto, transcripción o síntesis cobradas por otros servicios, impuestos ni servidor. No es un presupuesto garantizado.
 

@@ -115,14 +115,43 @@ class VoiceAssistant:
     def speak(self, text):
         if not shutil.which('ffmpeg'):
             raise PipelineError('FFmpeg no está disponible en PATH.')
-        from gtts import gTTS
-        mp3 = BytesIO()
-        gTTS(text=text, lang='es', timeout=30).write_to_fp(mp3)
-        # Obtener PCM y construir un WAV canónico de 44 bytes para el firmware antiguo.
-        result = subprocess.run([
-            'ffmpeg', '-v', 'error', '-i', 'pipe:0', '-f', 's16le',
-            '-acodec', 'pcm_s16le', '-ar', str(RATE), '-ac', '1', 'pipe:1',
-        ], input=mp3.getvalue(), capture_output=True, timeout=60, check=True)
+        provider = os.getenv('TTS_PROVIDER', 'chatterbox').strip().lower()
+        if provider not in ('chatterbox', 'gtts'):
+            raise PipelineError('TTS_PROVIDER debe ser chatterbox o gtts.')
+        try:
+            if provider == 'chatterbox':
+                python = os.getenv('CHATTERBOX_PYTHON', '').strip()
+                if not python or not Path(python).is_file():
+                    raise PipelineError('Configura CHATTERBOX_PYTHON con el Python del entorno Chatterbox.')
+                with tempfile.TemporaryDirectory(prefix='pulsera-tts-') as folder:
+                    raw_wav = Path(folder) / 'chatterbox.wav'
+                    command = [python, str(ROOT / 'server/tts_chatterbox.py'),
+                               '--text', text, '--output', str(raw_wav)]
+                    reference = os.getenv('CHATTERBOX_REFERENCE', '').strip()
+                    if reference:
+                        command.extend(['--reference', reference])
+                    env = os.environ.copy()
+                    cache = ROOT / '.cache/numba'
+                    cache.mkdir(parents=True, exist_ok=True)
+                    env['NUMBA_CACHE_DIR'] = str(cache)
+                    subprocess.run(command, capture_output=True, timeout=300,
+                                   check=True, env=env)
+                    result = subprocess.run([
+                        'ffmpeg', '-v', 'error', '-i', str(raw_wav), '-f', 's16le',
+                        '-acodec', 'pcm_s16le', '-ar', str(RATE), '-ac', '1', 'pipe:1',
+                    ], capture_output=True, timeout=60, check=True)
+            else:
+                from gtts import gTTS
+                mp3 = BytesIO()
+                gTTS(text=text, lang='es', timeout=30).write_to_fp(mp3)
+                result = subprocess.run([
+                    'ffmpeg', '-v', 'error', '-i', 'pipe:0', '-f', 's16le',
+                    '-acodec', 'pcm_s16le', '-ar', str(RATE), '-ac', '1', 'pipe:1',
+                ], input=mp3.getvalue(), capture_output=True, timeout=60, check=True)
+        except subprocess.TimeoutExpired as exc:
+            raise PipelineError(f'La generación de voz con {provider} agotó el tiempo.') from exc
+        except subprocess.CalledProcessError as exc:
+            raise PipelineError(f'La generación de voz con {provider} falló.') from exc
         return pcm_to_wav(result.stdout)
 
     def process(self, pcm):
@@ -215,9 +244,14 @@ def main():
             'ffmpeg_disponible': bool(shutil.which('ffmpeg')),
             'whisper_instalado': importlib.util.find_spec('whisper') is not None,
             'modelo_api': VoiceAssistant().model,
+            'tts': os.getenv('TTS_PROVIDER', 'chatterbox'),
+            'chatterbox_disponible': Path(os.getenv('CHATTERBOX_PYTHON', '')).is_file(),
         }
         print(json.dumps(checks, ensure_ascii=False, indent=2))
-        return 0 if all(checks[k] for k in checks if k != 'modelo_api') else 1
+        required = ('api_key_configurada', 'ffmpeg_disponible', 'whisper_instalado')
+        if checks['tts'] == 'chatterbox':
+            required += ('chatterbox_disponible',)
+        return 0 if all(checks[k] for k in required) else 1
     assistant = VoiceAssistant()
     try:
         if args.text is not None:

@@ -2,7 +2,7 @@
 
 Asistente de voz con botón y altavoz para llevar en la muñeca, sin cámara. Basado en el proyecto ESP32 Sunday recuperado.
 
-La opción principal es **Whisper en la computadora → modelo conversacional por API → voz con gTTS**. Las alternativas futuras de comandos dentro de la pulsera e IA local en el celular están en [IA local](docs/ia-local-futuro.md).
+La opción principal es **Whisper en la computadora → modelo conversacional por API → voz local con Chatterbox Multilingual**. gTTS queda como respaldo. Las alternativas futuras de comandos dentro de la pulsera e IA local en el celular están en [IA local](docs/ia-local-futuro.md).
 
 ## Estado
 
@@ -18,7 +18,9 @@ python3 -m venv .venv
 cp .env.example .env
 ```
 
-Configurar `OPENAI_API_KEY` en `.env`, fuera de Git. `OPENAI_MODEL` usa `gpt-5-nano` como candidato económico inicial (modelo deprecado; comparar con `gpt-4o-mini` y `gpt-5.6-luna`); `WHISPER_MODEL` conserva `base`. Las pruebas reales de conversación llaman a la API y generan consumo. gTTS también utiliza un servicio externo para la voz.
+Configurar `OPENAI_API_KEY` en `.env`, fuera de Git. `OPENAI_MODEL` usa `gpt-5-nano` como candidato económico inicial (modelo deprecado; comparar con `gpt-4o-mini` y `gpt-5.6-luna`); `WHISPER_MODEL` conserva `base`. Las pruebas reales de conversación llaman a la API y generan consumo.
+
+`TTS_PROVIDER=chatterbox` usa el motor local recuperado de `ytauto`. `CHATTERBOX_PYTHON` debe apuntar al Python de su entorno independiente. La primera carga necesita unos 3 GB de modelo; en el equipo actual ya está descargado. Para usar el respaldo externo, cambiar a `TTS_PROVIDER=gtts`. Una referencia WAV limpia de 10–20 segundos puede configurarse en `CHATTERBOX_REFERENCE`; vacío usa la voz predeterminada.
 
 Para procesar audio, instalar además:
 
@@ -48,7 +50,7 @@ Probar todo el recorrido con una grabación WAV PCM16 mono a 16 kHz, de 0.2 a 60
 .venv/bin/python server/leov1ser.py --audio recordings/pregunta.wav --output recordings/respuesta.wav
 ```
 
-Se guardará la respuesta hablada y se mostrarán la transcripción, el texto y los tiempos de cada etapa. La primera transcripción incluye el tiempo de carga o descarga del modelo. `recordings/` se excluye de Git.
+Se guardará la respuesta hablada y se mostrarán la transcripción, el texto y los tiempos de cada etapa. La primera transcripción y la primera voz incluyen la carga de sus modelos. Chatterbox se ejecuta en CPU porque MPS provocó uso de swap en esta máquina; puede tardar aproximadamente 3–5 segundos de cómputo por segundo de audio. `recordings/` se excluye de Git.
 
 Para convertir una grabación a ese formato:
 
