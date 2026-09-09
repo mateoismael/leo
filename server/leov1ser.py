@@ -115,7 +115,7 @@ class VoiceAssistant:
     def speak(self, text):
         if not shutil.which('ffmpeg'):
             raise PipelineError('FFmpeg no está disponible en PATH.')
-        provider = os.getenv('TTS_PROVIDER', 'chatterbox').strip().lower()
+        provider = os.getenv('TTS_PROVIDER', 'gtts').strip().lower()
         if provider not in ('chatterbox', 'gtts'):
             raise PipelineError('TTS_PROVIDER debe ser chatterbox o gtts.')
         try:
@@ -244,7 +244,7 @@ def main():
             'ffmpeg_disponible': bool(shutil.which('ffmpeg')),
             'whisper_instalado': importlib.util.find_spec('whisper') is not None,
             'modelo_api': VoiceAssistant().model,
-            'tts': os.getenv('TTS_PROVIDER', 'chatterbox'),
+            'tts': os.getenv('TTS_PROVIDER', 'gtts'),
             'chatterbox_disponible': Path(os.getenv('CHATTERBOX_PYTHON', '')).is_file(),
         }
         print(json.dumps(checks, ensure_ascii=False, indent=2))
