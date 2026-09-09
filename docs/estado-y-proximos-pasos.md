@@ -104,3 +104,20 @@ Esto mejora la naturalidad y permite correcciones, pero no acelera por sí solo 
 Se instaló sounddevice 0.5.6 en el entorno local. macOS reconoce el micrófono integrado (índice 0) y las bocinas (índice 1). La captura usa la frecuencia nativa del dispositivo, mono PCM16, y FFmpeg convierte a 16 kHz. Whisper permanece cargado durante la conversación. La captura se cierra antes de transcribir y reproducir la respuesta. El límite es 60 segundos; errores de captura o grabaciones demasiado cortas no se envían a la API.
 
 Se verificaron 16 pruebas: incluyen conversión real de PCM simulado de 48 a 16 kHz, rechazo de grabaciones cortas y rechazo de pérdida de muestras. La enumeración de dispositivos se probó fuera del sandbox. Falta que el usuario permita el micrófono para Terminal y pruebe su voz; no se grabó el entorno durante estas verificaciones ni se hicieron nuevas llamadas pagadas. No se ha medido aún la latencia acústica completa.
+
+
+## Corte de las primeras palabras reportado por el usuario
+
+Síntoma: el texto está completo, pero al empezar a sonar parece faltar parte de la primera palabra. El WAV guardado comienza con una frase reconocible al retranscribir localmente sus primeros siete segundos. Esto apunta a la reproducción, pero no demuestra que la síntesis esté libre de cortes; falta confirmación acústica del usuario.
+
+Se sustituyó ffplay en `probar_mac.py` por sounddevice/PortAudio. El dispositivo se abre antes de consumir el generador, emite 200 ms de silencio de preparación y permanece activo durante las pausas. La cola conserva los bytes PCM pendientes: si no llega la siguiente frase, sale silencio y luego continúa desde su primera muestra. El WAV guardado conserva el PCM original, sin ese silencio de preparación. Se esperan los últimos datos antes de cerrar y se informa de underflows detectados por PortAudio.
+
+Verificaciones: 18 pruebas pasan. Las nuevas pruebas comparan bytes del inicio y final y comprueban continuidad después de una pausa. Se reprodujo «Lima» fuera del sandbox sin errores ni underflows reportados y sin nuevas llamadas API. El sandbox no permite abrir la salida de audio. No se afirma que el problema acústico esté resuelto hasta que el usuario lo compruebe. El control del micrófono sigue siendo ESPACIO para iniciar/terminar y q para salir.
+
+Prueba gratuita con la respuesta guardada, sin sobrescribirla:
+
+```sh
+.venv/bin/python server/probar_mac.py --replay recordings/prueba-mac.wav --output recordings/revision-audio.wav
+```
+
+Pendiente independiente: el modelo ofreció buscar información, pero el programa no tiene herramienta de búsqueda web. Las respuestas históricas sobre el libro de Coelho no se han verificado y no deben tratarse como resultados de una búsqueda.

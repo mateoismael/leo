@@ -1,32 +1,23 @@
 """Prueba interactiva con altavoces del Mac; no requiere ESP32."""
 import argparse
 import json
-import shutil
-import subprocess
-import tempfile
 import time
 import wave
 from pathlib import Path
 
 from leov1ser import ROOT, RATE, VoiceAssistant, read_wav
+from playback import PCMPlayer
 from microphone import MicrophoneError, wait_and_record
 
 
 def play_stream(chunks, output, started):
     """Guarda el PCM y lo entrega al reproductor según llega."""
-    if not shutil.which('ffplay'):
-        raise RuntimeError('Falta ffplay (incluido en la instalación completa de FFmpeg).')
     output.parent.mkdir(parents=True, exist_ok=True)
-    errors = tempfile.TemporaryFile()
-    player = subprocess.Popen([
-        'ffplay', '-nodisp', '-autoexit', '-loglevel', 'error',
-        '-probesize', '32', '-analyzeduration', '0',
-        '-f', 's16le', '-ar', str(RATE), '-ch_layout', 'mono', '-i', 'pipe:0',
-    ], stdin=subprocess.PIPE, stderr=errors)
     first = None
     count = 0
     try:
-        with wave.open(str(output), 'wb') as wav:
+        # El dispositivo recibe silencio mientras se esperan los primeros datos.
+        with PCMPlayer(RATE) as player, wave.open(str(output), 'wb') as wav:
             wav.setnchannels(1)
             wav.setsampwidth(2)
             wav.setframerate(RATE)
@@ -39,32 +30,20 @@ def play_stream(chunks, output, started):
                     first = time.perf_counter() - started
                     print(f'Primer audio disponible: {first:.2f} s (el reproductor añade su búfer).', flush=True)
                 wav.writeframesraw(chunk)
-                player.stdin.write(chunk)
-                player.stdin.flush()
+                player.write(chunk)
                 count += len(chunk)
-        delivered = time.perf_counter() - started
-        player.stdin.close()
-        code = player.wait(timeout=90)
-        errors.seek(0)
-        diagnostic = errors.read().decode('utf-8', errors='replace').lower()
-        if code != 0 or 'failed' in diagnostic or 'error' in diagnostic:
-            raise RuntimeError('El reproductor no pudo abrir o completar la salida de audio.')
-        if not count:
-            raise RuntimeError('La respuesta no produjo audio.')
+            delivered = time.perf_counter() - started
+            if not count:
+                raise RuntimeError('La respuesta no produjo audio.')
+            player.finish()
+            if player.buffer.underflows:
+                print(f'Aviso: {player.buffer.underflows} interrupciones de salida de audio detectadas.')
         print(json.dumps({'primer_pcm_s': first, 'entrega_completa_s': round(delivered, 3),
                           'duracion_audio_s': count / (RATE * 2)}, ensure_ascii=False))
         print('WAV guardado:', output.resolve())
     finally:
         if hasattr(chunks, 'close'):
             chunks.close()
-        if player.poll() is None:
-            player.terminate()
-            try:
-                player.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                player.kill()
-                player.wait()
-        errors.close()
 
 
 def main():
@@ -86,8 +65,6 @@ def main():
     source = args.audio or args.replay
     if source and source.resolve() == args.output.resolve():
         parser.error('La salida no puede sobrescribir el audio de entrada.')
-    if not shutil.which('ffplay'):
-        parser.error('Falta ffplay para reproducir audio.')
     assistant = VoiceAssistant()
     try:
         if args.mic or not (args.text is not None or args.audio or args.replay or args.chat):
