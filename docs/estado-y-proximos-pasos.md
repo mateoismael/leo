@@ -66,3 +66,35 @@ Los WAV de comprobación quedaron en `recordings/`, fuera de Git. FFprobe confir
 ## Criterio para continuar
 
 La siguiente decisión depende de la prueba física. Si el primer sonido llega cerca de la medición del servidor, se conserva este diseño. Si aparecen cortes, bytes extra o bloqueos, se documentará el resultado aquí y se probará primero el transporte de audio; cambiar Whisper no resolvería esos fallos.
+
+## Pruebas en Mac y conversación interrumpible
+
+Se añadió `server/probar_mac.py`. Desde la raíz del repositorio:
+
+```sh
+.venv/bin/python server/probar_mac.py
+```
+
+Permite escribir preguntas y escuchar respuestas progresivas con ffplay; `/salir` termina y Ctrl+C interrumpe la prueba. Cada pregunta llama a la API y usa gTTS. No escucha el micrófono en este modo. El historial se mantiene mientras siga abierto y el último audio se guarda en `recordings/prueba-mac.wav`.
+
+```sh
+# Sin API ni internet: reproduce una respuesta ya guardada.
+.venv/bin/python server/probar_mac.py --replay recordings/respuesta-streaming.wav
+# Pregunta grabada: transcribe con Whisper y consulta la API.
+.venv/bin/python server/probar_mac.py --audio recordings/pregunta-simulada.wav
+```
+
+Verificación adicional: 13 pruebas pasan, incluyendo cierre de la cola productora al cancelar y conservación del bloqueo durante la transmisión HTTP. Antes el endpoint soltaba ese bloqueo al devolver la respuesta, permitiendo superponer conversaciones. Se corrigió. Una lectura activa de la API puede tardar hasta su timeout antes de terminar; no se garantiza cancelación instantánea de una solicitud remota.
+
+La reproducción local del WAV «Lima» abrió ffplay sin errores fuera del sandbox. Dentro del sandbox falló el acceso al dispositivo de audio. Esta comprobación confirma el funcionamiento del reproductor, no una medición acústica con micrófono.
+
+Precisión sobre las mediciones anteriores: 4.580 s y 8.089 s corresponden a una prueba desde texto, sin Whisper ni transporte ESP32. La diferencia de 3.509 s es entre primer PCM y último PCM de la misma ejecución, no una comparación A/B contra el modo WAV. El altavoz añade latencia de reproducción. La prueba de «Lima» sí incluyó transcripción (0.670 s), primer PCM a 4.433 s y carga previa de 2.006 s. No hay todavía una medición de voz física de extremo a extremo.
+
+Interrupción automática de voz (barge-in), propuesta para después de validar el recorrido básico:
+
+1. Primero permitir pulsar el botón mientras habla para detener reproducción, descartar audio pendiente e iniciar una nueva grabación. El firmware actual aún no implementa esa interrupción.
+2. Después mantener escucha durante la reproducción, detectar voz (VAD) y cancelar el turno cuando el usuario tome la palabra.
+3. Añadir cancelación de eco para no confundir el altavoz con la voz del usuario y ajustar detección de final de turno para tolerar pausas.
+4. Conservar en el historial qué parte de la respuesta se escuchó y añadir la corrección del usuario antes de generar la siguiente respuesta. Actualmente se guarda el texto generado completo, no el audio efectivamente escuchado.
+
+Esto mejora la naturalidad y permite correcciones, pero no acelera por sí solo la API. No se incorpora escucha permanente en esta fase. Referencia consultada: https://elevenlabs.io/docs/eleven-agents/customization/conversation-flow

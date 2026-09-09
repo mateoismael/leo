@@ -33,6 +33,23 @@ class PipelineError(Exception):
     pass
 
 
+class LockedStreamingResponse(StreamingResponse):
+    def __init__(self, content, *, lock, **kwargs):
+        super().__init__(content, **kwargs)
+        self.lock = lock
+        self.source = content
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            try:
+                if hasattr(self.source, 'close'):
+                    self.source.close()
+            finally:
+                self.lock.release()
+
+
 def pcm_to_wav(pcm):
     if len(pcm) % 2 or not RATE * 2 * 0.2 <= len(pcm) <= MAX_BYTES:
         raise ValueError('Se requiere PCM16 mono de 16 kHz, entre 0.2 y 60 segundos.')
@@ -113,6 +130,7 @@ class VoiceAssistant:
 
     def answer_sentences(self, text):
         """Entrega frases a medida que llegan los tokens del modelo."""
+        events = None
         try:
             events = self._request(text, stream=True)
             pending = ''
@@ -142,6 +160,9 @@ class VoiceAssistant:
             raise
         except Exception as exc:
             raise PipelineError('La transmisión de la API se interrumpió.') from exc
+        finally:
+            if events is not None and hasattr(events, 'close'):
+                events.close()
         answer = ' '.join(complete).strip()
         if not answer:
             raise PipelineError('La API devolvió una respuesta vacía.')
@@ -215,31 +236,49 @@ class VoiceAssistant:
         """Solapa la recepción del modelo con la síntesis y entrega PCM incremental."""
         sentences = queue.Queue(maxsize=4)
         finished = object()
+        stopped = threading.Event()
+
+        def put(item):
+            while not stopped.is_set():
+                try:
+                    sentences.put(item, timeout=0.1)
+                    return True
+                except queue.Full:
+                    pass
+            return False
 
         def receive_text():
+            source = self.answer_sentences(text)
             try:
-                for sentence in self.answer_sentences(text):
-                    sentences.put(sentence)
+                for sentence in source:
+                    if not put(sentence):
+                        break
             except Exception as exc:
-                sentences.put(exc)
+                put(exc)
             finally:
-                sentences.put(finished)
+                source.close()
+                put(finished)
 
         worker = threading.Thread(target=receive_text, name='respuesta-stream', daemon=True)
         worker.start()
         first = True
-        while True:
-            item = sentences.get()
-            if item is finished:
-                break
-            if isinstance(item, Exception):
-                raise item
-            pcm = self.synthesize_pcm(item)
-            if not first:
-                yield b'\x00\x00' * int(RATE * 0.08)
-            first = False
-            for offset in range(0, len(pcm), chunk_size):
-                yield pcm[offset:offset + chunk_size]
+        try:
+            while True:
+                item = sentences.get()
+                if item is finished:
+                    break
+                if isinstance(item, Exception):
+                    raise item
+                pcm = self.synthesize_pcm(item)
+                if not first:
+                    yield b'\x00\x00' * int(RATE * 0.08)
+                first = False
+                for offset in range(0, len(pcm), chunk_size):
+                    yield pcm[offset:offset + chunk_size]
+        finally:
+            stopped.set()
+            # Una lectura de red activa puede tardar hasta el timeout del SDK.
+            worker.join(timeout=0.2)
 
     def prepare_stream(self, pcm):
         wav = pcm_to_wav(pcm)
@@ -298,6 +337,7 @@ def create_app(assistant=None):
         # Compatibilidad de un único dispositivo con el firmware recuperado.
         if not lock.acquire(blocking=False):
             raise HTTPException(409, 'Hay una grabación en procesamiento.')
+        streaming = False
         try:
             body = bytearray()
             async for chunk in request.stream():
@@ -317,8 +357,9 @@ def create_app(assistant=None):
                 try:
                     if request.headers.get('Response-Mode', '').strip().lower() == 'stream':
                         _, pcm_stream = await run_in_threadpool(assistant.prepare_stream, pcm)
-                        return StreamingResponse(
+                        response = LockedStreamingResponse(
                             pcm_stream,
+                            lock=lock,
                             media_type='application/octet-stream',
                             headers={
                                 'Connection': 'close',
@@ -326,6 +367,8 @@ def create_app(assistant=None):
                                 'X-Audio-Format': 'pcm-s16le;rate=16000;channels=1',
                             },
                         )
+                        streaming = True
+                        return response
                     wav, _ = await run_in_threadpool(assistant.process, pcm)
                 except PipelineError as exc:
                     raise HTTPException(502, str(exc)) from exc
@@ -342,7 +385,8 @@ def create_app(assistant=None):
             buffer.extend(body)
             return {'status': 'ok'}
         finally:
-            lock.release()
+            if not streaming:
+                lock.release()
 
     return app
 

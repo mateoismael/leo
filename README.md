@@ -94,3 +94,11 @@ El estado detallado, las mediciones de streaming, sus límites y el orden de tra
 El repo local no tiene remoto ni publicación en GitHub. El despliegue futuro en el servidor personal está descrito en el [plan](docs/plan.md); falta preparar autenticación, HTTPS y supervisión. Las dependencias `.in` describen paquetes requeridos; los archivos `.txt`, cuando existan, capturan las versiones verificadas en el entorno de desarrollo, no garantizan compatibilidad con otro sistema.
 
 Se mantiene Chat Completions. Ver [comparación de modelos y costes](docs/modelos-api-2026-09-09.md). Para migrar en el futuro a OpenRouter, configurar `LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY` y `OPENROUTER_MODEL`; se utiliza una clave independiente y la URL oficial de ese proveedor. Solo está preparada la ruta de texto, no voz multimodal nativa ni Gemini Live.
+
+## Conversar desde la Mac
+
+```sh
+.venv/bin/python server/probar_mac.py
+```
+
+Escribe una pregunta y pulsa Enter: la respuesta se reproduce por los altavoces con ffplay. `/salir` termina. Usa la API y gTTS; no captura el micrófono. Para probar un WAV existente con Whisper, usa `--audio recordings/pregunta-simulada.wav`. Para reproducir un audio sin llamadas externas, usa `--replay recordings/respuesta-streaming.wav`.

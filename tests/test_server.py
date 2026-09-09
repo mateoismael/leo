@@ -1,15 +1,64 @@
 import unittest
+import asyncio
+import threading
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 import wave
 
 from fastapi.testclient import TestClient
-from server.leov1ser import VoiceAssistant, PipelineError, pcm_to_wav, create_app, MAX_BYTES
+from server.leov1ser import VoiceAssistant, PipelineError, pcm_to_wav, create_app, MAX_BYTES, LockedStreamingResponse
 from server.tts_chatterbox import split_text
 
 
 class ServerTests(unittest.TestCase):
+    def test_cancel_stream_releases_text_producer(self):
+        closed = threading.Event()
+
+        def many_sentences(text):
+            try:
+                for _ in range(100):
+                    yield 'Hola.'
+            finally:
+                closed.set()
+
+        assistant = VoiceAssistant()
+        assistant.answer_sentences = many_sentences
+        assistant.synthesize_pcm = lambda _: b'\x01\x00' * 4000
+        chunks = assistant.stream_speech('Pregunta')
+        self.assertEqual(len(next(chunks)), 2048)
+        chunks.close()
+        self.assertTrue(closed.wait(2), 'El productor quedó bloqueado en la cola.')
+
+    def test_stream_lock_is_held_until_send_fails(self):
+        lock = threading.Lock()
+        lock.acquire()
+        closed = threading.Event()
+
+        def chunks():
+            try:
+                yield b'\x00\x00'
+            finally:
+                closed.set()
+
+        async def scenario():
+            response = LockedStreamingResponse(chunks(), lock=lock)
+
+            async def send(message):
+                self.assertTrue(lock.locked())
+                if message['type'] == 'http.response.body':
+                    raise RuntimeError('Conexión perdida')
+
+            async def receive():
+                await asyncio.sleep(10)
+
+            with self.assertRaises(Exception):
+                await response({'type': 'http', 'asgi': {'spec_version': '2.4'}}, receive, send)
+
+        asyncio.run(scenario())
+        self.assertFalse(lock.locked())
+        self.assertTrue(closed.is_set())
+
     def test_question_once_and_history_only_after_success(self):
         client = Mock()
         client.chat.completions.create.return_value = SimpleNamespace(
