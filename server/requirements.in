@@ -1,0 +1,11 @@
+# Dependencias deducidas de los imports del código recuperado.
+# Versiones todavía NO resueltas ni verificadas. No es un lockfile.
+fastapi
+uvicorn
+numpy
+openai-whisper
+gTTS
+soundfile
+librosa
+openai
+python-dotenv

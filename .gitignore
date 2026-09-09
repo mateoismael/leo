@@ -1,0 +1,34 @@
+# Configuración privada
+.env
+.env.*
+!.env.example
+config.h
+*.pem
+*.key
+
+# Python y compilación
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pio/
+build/
+dist/
+*.egg-info/
+
+# Audio, modelos y archivos recuperados
+*.wav
+*.mp3
+*.pcm
+*.pt
+*.bin
+*.zip
+*.rar
+recordings/
+models/
+
+# Sistema y editor
+.DS_Store
+.idea/
+.vscode/
