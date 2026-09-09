@@ -1,11 +1,6 @@
-# Dependencias deducidas de los imports del código recuperado.
-# Versiones todavía NO resueltas ni verificadas. No es un lockfile.
+# Servidor, prueba por texto y síntesis de voz.
 fastapi
 uvicorn
-numpy
-openai-whisper
-gTTS
-soundfile
-librosa
 openai
 python-dotenv
+gTTS

@@ -1,45 +1,92 @@
 # Pulsera de voz
 
-Asistente de voz para llevar en la muñeca, con botón para hablar y respuesta por altavoz. Sin cámara. Basado en el prototipo ESP32 recuperado del proyecto Sunday.
+Asistente de voz con botón y altavoz para llevar en la muñeca, sin cámara. Basado en el proyecto ESP32 Sunday recuperado.
+
+La opción principal es **Whisper en la computadora → modelo conversacional por API → voz con gTTS**. Las alternativas futuras de comandos dentro de la pulsera e IA local en el celular están en [IA local](docs/ia-local-futuro.md).
 
 ## Estado
 
-Repositorio local inicial. Se conserva el comportamiento del código recuperado, con la configuración Wi-Fi separada de los programas. El servidor todavía no se ha ejecutado en este entorno ni se ha compilado o probado el firmware con hardware. No está listo para exponerse a internet.
+Servidor refactorizado con configuración externa, prueba por texto, prueba con WAV y medición por etapa. Mantiene `/audio` para el firmware recuperado. Se verificó una consulta mínima real a GPT-5 nano y ocho pruebas automatizadas sin proveedores. La clave ya está configurada en el entorno local; el recorrido completo de voz sigue pendiente y requiere descargar el modelo Whisper. No hay validación física del ESP32 ni despliegue en nube.
 
-## Arquitectura actual
+## Preparación
 
-Botón y micrófono INMP441 → ESP32 → Wi-Fi/HTTP → servidor Python/FastAPI → Whisper base → API del modelo conversacional → gTTS → audio WAV → ESP32 y MAX98357/altavoz.
+El entorno local ya está preparado. Para otra instalación, desde la raíz del repositorio, con Python 3.9 o posterior:
 
-El procesamiento pesado ocurre fuera de la pulsera. Más adelante el servidor Python podrá alojarse en el servidor personal del propietario; subir el repositorio por sí solo no despliega el servicio.
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r server/requirements.in
+cp .env.example .env
+```
 
-## Carpetas
+Configurar `OPENAI_API_KEY` en `.env`, fuera de Git. `OPENAI_MODEL` usa `gpt-5-nano` como candidato económico inicial (modelo deprecado; comparar con `gpt-4o-mini` y `gpt-5.6-luna`); `WHISPER_MODEL` conserva `base`. Las pruebas reales de conversación llaman a la API y generan consumo. gTTS también utiliza un servicio externo para la voz.
 
-| Ruta | Contenido |
-|---|---|
-| `firmware/leov1/` | Firmware principal recuperado y plantilla de configuración |
-| `server/` | Servidor conversacional recuperado e inventario de dependencias |
-| `legacy/transcriptoraud/` | Pareja anterior de transcripción y repetición, para referencia y diagnóstico |
-| `docs/` | Análisis de recuperación, hardware y próximos pasos |
+Para procesar audio, instalar además:
 
-## Configuración
+```sh
+.venv/bin/python -m pip install -r server/requirements-audio.in
+```
 
-- Copiar `.env.example` a `.env` en la raíz y configurar `OPENAI_API_KEY` antes de ejecutar el servidor. La clave se utiliza para llamadas a la API, que pueden generar consumo.
-- Copiar `firmware/leov1/config.example.h` a `firmware/leov1/config.h` y completar red, contraseña y dirección del servidor local.
-- La versión anterior tiene su propia plantilla `config.example.h`.
-- `.env`, `config.h`, audios y modelos descargados quedan excluidos de Git.
+FFmpeg debe estar instalado y disponible en PATH. Whisper descarga el modelo la primera vez que se usa; esto necesita conexión y espacio local. No se descarga al iniciar el servidor ni al probar por texto.
 
-`server/requirements.in` recoge las dependencias encontradas, todavía sin versiones verificadas. El siguiente trabajo es preparar un entorno reproducible, incluyendo FFmpeg para el audio, y una prueba con grabaciones. No se presenta aún una receta de instalación validada.
+## Probar sin ESP32
 
-## Próximo objetivo
+Revisar el entorno sin llamadas externas (devuelve código 1 si falta algún requisito de audio):
 
-Probar el recorrido voz → transcripción → IA → respuesta hablada desde la computadora usando un archivo de audio, sin requerir ESP32. Después corregir el protocolo y medir latencia antes de miniaturizar el hardware. Ver [plan](docs/plan.md).
+```sh
+.venv/bin/python server/leov1ser.py --check
+```
 
-## GitHub y servidor personal
+Probar solo la conversación por API:
 
-Este repositorio es independiente del repositorio que contiene la carpeta superior. No tiene remoto ni se ha publicado. Cuando se cree el repositorio de GitHub se añadirá su URL como `origin`.
+```sh
+.venv/bin/python server/leov1ser.py --text "Hola, dime qué puedes hacer en una frase."
+```
 
-El despliegue posterior en el servidor personal requerirá configuración externa de secretos, HTTPS y autenticación del dispositivo, límites de uso y almacenamiento, y supervisión del proceso. El endpoint recuperado carece de autenticación; mantenerlo en un entorno de desarrollo controlado hasta implementar estas partes.
+Probar todo el recorrido con una grabación WAV PCM16 mono a 16 kHz, de 0.2 a 60 segundos:
 
-## Procedencia
+```sh
+.venv/bin/python server/leov1ser.py --audio recordings/pregunta.wav --output recordings/respuesta.wav
+```
 
-Los archivos originales y los archivos comprimidos se conservan fuera de este repositorio, en la carpeta del proyecto. Aquí se incluyen copias del código: los firmwares tienen únicamente la extracción de configuración privada a `config.h`; los dos servidores Python se conservan sin cambios. El análisis histórico mantiene las rutas originales para facilitar su identificación.
+Se guardará la respuesta hablada y se mostrarán la transcripción, el texto y los tiempos de cada etapa. La primera transcripción incluye el tiempo de carga o descarga del modelo. `recordings/` se excluye de Git.
+
+Para convertir una grabación a ese formato:
+
+```sh
+ffmpeg -i mi-grabacion.m4a -ar 16000 -ac 1 -c:a pcm_s16le recordings/pregunta.wav
+```
+
+Crear antes la carpeta `recordings` si no existe.
+
+## Servidor y firmware
+
+```sh
+.venv/bin/python server/leov1ser.py
+```
+
+Escucha por defecto solo en `127.0.0.1:8000`; `/health` comprueba que el proceso responde, no la disponibilidad de proveedores. Para conectar el ESP32 en una red de desarrollo controlada, usar `--host 0.0.0.0`. Copiar `firmware/leov1/config.example.h` a `config.h` y completar red, contraseña y dirección HTTP del servidor.
+
+El endpoint admite bloques PCM16 mono de 16 kHz en POST `/audio` y una petición vacía con `Recording-Status: end`. Devuelve un WAV compatible con la cabecera de 44 bytes esperada por el firmware. Audio inválido devuelve 400, demasiado grande 413, procesamiento ocupado 409 y errores de proveedores 502.
+
+Esta compatibilidad es para **un dispositivo y un proceso**, sin autenticación. No usar múltiples workers ni exponer a internet. Los identificadores de grabación, recuperación de respuestas tras timeout y limpieza de grabaciones abandonadas siguen pendientes. El firmware antiguo espera solo 10 segundos para la respuesta y podría agotar su timeout; la primera prueba debe hacerse por CLI.
+
+## Pruebas automatizadas
+
+```sh
+.venv/bin/python -m pip install httpx
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+Las pruebas sustituyen proveedores externos: verifican historial, formato de audio y protocolo HTTP sin coste de API.
+
+## Organización y procedencia
+
+- `server/leov1ser.py`: versión de trabajo actual.
+- `firmware/leov1/`: firmware recuperado con configuración privada separada.
+- `legacy/leov1/leov1ser.py`: servidor conversacional original, conservado sin cambios.
+- `legacy/transcriptoraud/`: pareja anterior que transcribe y repite.
+- `docs/`: análisis histórico, hardware, plan e IA local futura.
+
+El repo local no tiene remoto ni publicación en GitHub. El despliegue futuro en el servidor personal está descrito en el [plan](docs/plan.md); falta preparar autenticación, HTTPS y supervisión. Las dependencias `.in` describen paquetes requeridos; los archivos `.txt`, cuando existan, capturan las versiones verificadas en el entorno de desarrollo, no garantizan compatibilidad con otro sistema.
+
+Se mantiene Chat Completions. Ver [comparación de modelos y costes](docs/modelos-api-2026-09-09.md). Para migrar en el futuro a OpenRouter, configurar `LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY` y `OPENROUTER_MODEL`; se utiliza una clave independiente y la URL oficial de ese proveedor. Solo está preparada la ruta de texto, no voz multimodal nativa ni Gemini Live.

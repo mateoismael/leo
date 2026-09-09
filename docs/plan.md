@@ -1,12 +1,14 @@
 # Plan de recuperación
 
+Decisión actual: comenzar con IA conversacional por API. Las dos alternativas locales se conservan para después en [IA local futura](ia-local-futuro.md).
+
 ## 1. Software en la computadora
 
-- Resolver y fijar dependencias en un entorno virtual.
-- Separar configuración, transcripción, conversación y generación de voz.
-- Crear una prueba con archivo de audio que sustituya al ESP32.
-- Comprobar el recorrido completo y medir tiempo por etapa.
-- Corregir pregunta duplicada, respuestas de error y validación de WAV.
+- Instaladas dependencias de servidor y Whisper en `.venv`; versiones del entorno macOS/Python 3.9 guardadas en `server/requirements-dev-lock.txt`.
+- Implementado: configuración externa y etapas separadas de transcripción, conversación y voz.
+- Implementado: CLI con `--text`, `--audio` y `--check`, sin ESP32.
+- Verificada una consulta mínima real a GPT-5 nano. Pendiente: recorrido completo de voz y tiempos por etapa, limitando las pruebas a las necesarias por presupuesto de aproximadamente USD 3.
+- Implementado: pregunta sin duplicación, estados HTTP de error y validación WAV/PCM. Pruebas automatizadas con proveedores sustituidos; validación real pendiente.
 
 ## 2. Comunicación y hardware existente
 
