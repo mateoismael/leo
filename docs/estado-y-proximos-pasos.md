@@ -121,3 +121,8 @@ Prueba gratuita con la respuesta guardada, sin sobrescribirla:
 ```
 
 Pendiente independiente: el modelo ofreció buscar información, pero el programa no tiene herramienta de búsqueda web. Las respuestas históricas sobre el libro de Coelho no se han verificado y no deben tratarse como resultados de una búsqueda.
+
+
+## Confirmación de uso — 12 de septiembre de 2026
+
+El usuario indica que cree que desapareció el corte al inicio del audio después del cambio a sounddevice/PortAudio. Se registra como mejora percibida en uso real, con confirmación provisional; falta observar si reaparece en próximas conversaciones. No es una medición acústica controlada ni valida todavía la reproducción en ESP32.
