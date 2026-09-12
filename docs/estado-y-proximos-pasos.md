@@ -126,3 +126,21 @@ Pendiente independiente: el modelo ofreció buscar información, pero el program
 ## Confirmación de uso — 12 de septiembre de 2026
 
 El usuario indica que cree que desapareció el corte al inicio del audio después del cambio a sounddevice/PortAudio. Se registra como mejora percibida en uso real, con confirmación provisional; falta observar si reaparece en próximas conversaciones. No es una medición acústica controlada ni valida todavía la reproducción en ESP32.
+
+
+## Corrección de firmware y recuperación — 12 de septiembre de 2026
+
+Esta sección actualiza los pendientes históricos de compilación, captura bloqueante e identificación de grabaciones anteriores.
+
+- Se corrigió la espera sin datos: 20 s de inactividad y 90 s totales; un corte no se interpreta como éxito.
+- El lector conserva bloques partidos por TCP, valida el formato y espera el fin explícito. I2S usa escrituras con timeout y vaciado final.
+- Captura y red separadas por una cola FreeRTOS de 16 bloques. Una cola llena o un fallo detectado descarta la grabación, sin enviar esa pregunta incompleta a la API.
+- Las nuevas rutas v2 usan IDs y secuencias. Los reintentos de subida no duplican PCM y los de respuesta se conectan al resultado existente. La producción sigue aunque se desconecte el receptor.
+- Caché en memoria: hasta cuatro sesiones, resultados hasta cinco minutos y sujetos a expulsión por capacidad. No sobrevive a reinicios. Recuperación desde el principio, no desde la palabra donde se cortó.
+- 25 pruebas Python pasan, incluida desconexión/recuperación por TCP HTTP/1.0 real en localhost, con el proveedor ejecutado solo una vez. Pruebas C++ del lector también pasan: bytes fragmentados, socket vacío, desconexión y rollover del reloj.
+- Compilación cruzada completada para ESP32 Dev Module con core 3.3.11 y Arduino CLI 1.5.1 en Apple Silicon. Resultado: 1,042,664 bytes de programa (79%) y 54,872 bytes de variables globales (16%). La cola, tareas y buffers dinámicos consumen RAM adicional en ejecución.
+- La prueba inicial con core 2.0.17 falló por ejecutables Intel. Se instaló 3.3.11 con compilador nativo y se compiló el auxiliar ctags para ARM64. Se documentó la adaptación para reproducirla.
+
+No se cargó firmware a una placa, no se consumió crédito API y no se verificaron micrófono/amplificador físicos. Falta confirmar el modelo de ESP32, revisar pines y hacer prueba de mesa con red normal y lenta. El modo Mac conserva micrófono por ESPACIO y reproducción sounddevice.
+
+Detalles y comandos: [Firmware y protocolo](firmware-y-protocolo.md).

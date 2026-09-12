@@ -322,6 +322,11 @@ def create_app(assistant=None):
         yield
 
     app = FastAPI(title='Pulsera de voz — desarrollo local', lifespan=lifespan)
+    if __package__:
+        from .recordings import install_recording_routes
+    else:
+        from recordings import install_recording_routes
+    install_recording_routes(app, assistant, lock)
 
     @app.get('/health')
     def health():

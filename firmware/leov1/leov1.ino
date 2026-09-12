@@ -2,91 +2,42 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <driver/i2s.h>
-
+#include <atomic>
 #include "config.h"
+#include "transport.h"
 
-// Configuración local excluida de Git
-const char* ssid = WIFI_SSID;
-const char* password = WIFI_PASSWORD;
-const char* serverUrl = AUDIO_SERVER_URL;
-
-// Pin del botón
 const int BUTTON_PIN = 4;
-bool isRecording = false;
-
-// Tamaño del buffer de audio
 const int SAMPLE_BUFFER_SIZE = 1024;
-int16_t sBuffer[SAMPLE_BUFFER_SIZE];
-
-// Configuración I2S para INMP441 (Micrófono)
 #define I2S_MIC_WS GPIO_NUM_25
 #define I2S_MIC_SD GPIO_NUM_32
 #define I2S_MIC_SCK GPIO_NUM_33
 #define I2S_MIC_PORT I2S_NUM_0
-
-// Configuración I2S para MAX98357A (Altavoz)
 #define I2S_SPK_BCLK GPIO_NUM_26
 #define I2S_SPK_LRC GPIO_NUM_27
 #define I2S_SPK_DIN GPIO_NUM_22
 #define I2S_SPK_PORT I2S_NUM_1
 
-// Estados de los dispositivos
-bool microphoneEnabled = false;
-bool speakerEnabled = false;
-
-// Timeouts y reintentos
-const int HTTP_TIMEOUT = 20000;  // Incluye espera hasta el primer fragmento de voz
+const uint32_t HTTP_TIMEOUT = 10000;
 const int MAX_RETRIES = 3;
+QueueHandle_t audioQueue;
+std::atomic<bool> networkBusy{false};
+std::atomic<bool> recordingFailed{false};
+char recordingId[50];
+bool isRecording = false;
+bool waitForRelease = false;
+uint32_t sequence = 0;
+uint32_t capturedBytes = 0;
+uint32_t recordingStarted = 0;
 
-void enableMicrophone() {
-    if (!microphoneEnabled) {
-        ESP_ERROR_CHECK(i2s_start(I2S_MIC_PORT));
-        microphoneEnabled = true;
-        Serial.println("🎤 Micrófono activado");
-    }
-}
-
-void disableMicrophone() {
-    if (microphoneEnabled) {
-        ESP_ERROR_CHECK(i2s_stop(I2S_MIC_PORT));
-        microphoneEnabled = false;
-        Serial.println("🎤 Micrófono desactivado");
-    }
-}
-
-void enableSpeaker() {
-    if (!speakerEnabled) {
-        ESP_ERROR_CHECK(i2s_start(I2S_SPK_PORT));
-        speakerEnabled = true;
-        Serial.println("🔊 Altavoz activado");
-    }
-}
-
-void disableSpeaker() {
-    if (speakerEnabled) {
-        ESP_ERROR_CHECK(i2s_stop(I2S_SPK_PORT));
-        speakerEnabled = false;
-        Serial.println("🔊 Altavoz desactivado");
-    }
-}
+void networkTask(void*);
 
 void setup() {
     Serial.begin(115200);
-    delay(1000);
-    
-    Serial.println("\n=== Iniciando sistema ===");
-    
     pinMode(BUTTON_PIN, INPUT_PULLUP);
-    
-    // Conexión WiFi
-    Serial.print("📡 Conectando a WiFi");
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
-    Serial.println("\n✅ Conectado al WiFi");
-
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    // setup no espera indefinidamente a que aparezca la red.
+    uint32_t start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) delay(100);
     // Configurar I2S para INMP441
     i2s_config_t i2s_mic_config = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
@@ -102,6 +53,7 @@ void setup() {
     };
 
     i2s_pin_config_t mic_pin_config = {
+        .mck_io_num = I2S_PIN_NO_CHANGE,
         .bck_io_num = I2S_MIC_SCK,
         .ws_io_num = I2S_MIC_WS,
         .data_out_num = -1,
@@ -123,6 +75,7 @@ void setup() {
     };
 
     i2s_pin_config_t spk_pin_config = {
+        .mck_io_num = I2S_PIN_NO_CHANGE,
         .bck_io_num = I2S_SPK_BCLK,
         .ws_io_num = I2S_SPK_LRC,
         .data_out_num = I2S_SPK_DIN,
@@ -142,186 +95,201 @@ void setup() {
     i2s_zero_dma_buffer(I2S_MIC_PORT);
     i2s_zero_dma_buffer(I2S_SPK_PORT);
 
-    Serial.println("✅ Sistema iniciado y listo");
+    i2s_stop(I2S_MIC_PORT);
+    i2s_stop(I2S_SPK_PORT);
+    audioQueue = xQueueCreate(16, sizeof(AudioBlock));
+    if (!audioQueue || xTaskCreate(networkTask, "audio-network", 8192, nullptr, 1, nullptr) != pdPASS) {
+        Serial.println("No se pudo reservar la cola/tarea de audio.");
+        while (true) delay(1000);
+    }
+    Serial.println("Listo: mantén pulsado para hablar y suelta para responder.");
 }
 
-void process32to16(uint32_t* samples32, int16_t* samples16, size_t count) {
-    for (int i = 0; i < count; i++) {
-        samples16[i] = samples32[i] >> 16;
-    }
+String endpoint(const String& suffix) {
+    return String(AUDIO_SERVER_URL) + "/recordings/" + recordingId + suffix;
 }
 
-bool playAudioFromServer(WiFiClient* client, bool hasWavHeader = true) {
-    if (!client) {
-        Serial.println("❌ Error: Cliente nulo");
-        return false;
+// El mismo ID y secuencia se conservan durante todos los reintentos.
+bool sendBlock(const String& suffix, const uint8_t* data, size_t length) {
+    for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
+        HTTPClient http;
+        http.setConnectTimeout(3000);
+        http.setTimeout(HTTP_TIMEOUT);
+        http.begin(endpoint(suffix));
+        http.addHeader("Content-Type", "application/octet-stream");
+        int code = http.POST(const_cast<uint8_t*>(data), length);
+        http.end();
+        if (code == 200) return true;
+        if (code >= 400 && code < 500 && code != 409 && code != 429) return false;
+        delay(200);
     }
+    return false;
+}
 
-    const int bufferSize = 1024;  // Ajustado a 1024
-    uint8_t buffer[bufferSize];
-    size_t bytesWritten = 0;
-    int totalBytesRead = 0;
-    int headerSize = hasWavHeader ? 44 : 0;
-    unsigned long startTime = millis();
+struct PlaybackClock {
+    uint32_t now() { return millis(); }
+    void pause() { delay(2); }
+};
 
-    Serial.println("⏳ Esperando datos de audio...");
-    
-    // Esperar datos disponibles con timeout aumentado
-    unsigned long timeout = millis() + 10000;  // 10 segundos de timeout
-    int minimumBytes = hasWavHeader ? headerSize : 1;
-    while (client->available() < minimumBytes) {
-        if (millis() > timeout) {
-            Serial.println("❌ Timeout esperando header");
-            return false;
-        }
-        delay(10);
+bool readExact(WiFiClient* client, uint8_t* target, size_t length, uint32_t started) {
+    PlaybackClock clock;
+    return transport::readExact(client, target, length, started, clock);
+}
+
+bool writeSpeaker(const uint8_t* pcm, size_t length) {
+    size_t offset = 0;
+    while (offset < length) {
+        size_t written = 0;
+        esp_err_t result = i2s_write(I2S_SPK_PORT, pcm + offset, length - offset, &written, pdMS_TO_TICKS(500));
+        if (result != ESP_OK || written == 0 || written % 2) return false;
+        offset += written;
     }
-
-    if (hasWavHeader) {
-        Serial.println("📥 Header WAV recibido");
-        for (int i = 0; i < headerSize; i++) {
-            client->read();
-        }
-    } else {
-        Serial.println("📥 Primer fragmento PCM recibido");
-    }
-
-    Serial.println("▶️ Iniciando reproducción...");
-    i2s_zero_dma_buffer(I2S_SPK_PORT);
-    enableSpeaker();
-
-    while (client->available() || client->connected()) {
-        int availableBytes = client->available();
-        if (availableBytes <= 0) {
-            delay(2);
-            yield();
-            continue;
-        }
-        int bytesRead = client->read(buffer, min(availableBytes, bufferSize));
-        
-        if (bytesRead > 0) {
-            totalBytesRead += bytesRead;
-            esp_err_t result = i2s_write(I2S_SPK_PORT, buffer, bytesRead, &bytesWritten, portMAX_DELAY);
-            
-            if (result != ESP_OK) {
-                Serial.printf("❌ Error I2S write: %d\n", result);
-                disableSpeaker();
-                return false;
-            }
-            
-            // Pequeño delay para dar tiempo al buffer
-            delay(1);
-            
-            // Debug de progreso
-            if (totalBytesRead % (bufferSize * 8) == 0) {
-                Serial.printf("📊 Reproducidos %d bytes\n", totalBytesRead);
-            }
-        } else if (bytesRead < 0) {
-            Serial.println("❌ Error leyendo stream");
-            disableSpeaker();
-            return false;
-        }
-        
-        // Verificar timeout global
-        if (millis() - startTime > 60000) {  // 60 segundos máximo
-            Serial.println("⚠️ Timeout global de reproducción");
-            break;
-        }
-        
-        yield();
-    }
-
-    Serial.printf("✅ Reproducidos %d bytes en %lu ms\n", totalBytesRead, millis() - startTime);
-    delay(100);
-    i2s_zero_dma_buffer(I2S_SPK_PORT);
-    disableSpeaker();
     return true;
 }
 
-void loop() {
-    bool buttonIsPressed = (digitalRead(BUTTON_PIN) == LOW);
-    static unsigned long lastDebounceTime = 0;
-    static const unsigned long debounceDelay = 50;
-    
-    if (buttonIsPressed) {
-        if (!isRecording && (millis() - lastDebounceTime) > debounceDelay) {
-            isRecording = true;
-            Serial.println("\n=== INICIO GRABACIÓN ===");
-            enableMicrophone();
-            disableSpeaker();
+bool playFrames(WiFiClient* client) {
+    uint32_t started = millis();
+    uint8_t pcm[2048];
+    bool heardAudio = false;
+    while (true) {
+        uint8_t header[4];
+        if (!readExact(client, header, 4, started)) return false;
+        uint32_t length = uint32_t(header[0]) | (uint32_t(header[1]) << 8) |
+                          (uint32_t(header[2]) << 16) | (uint32_t(header[3]) << 24);
+        if (length == 0) {
+            if (!heardAudio) return false;
+            // Añade suficiente silencio para drenar los 8 buffers DMA antes de parar.
+            memset(pcm, 0, sizeof(pcm));
+            for (int i = 0; i < 10; ++i) if (!writeSpeaker(pcm, sizeof(pcm))) return false;
+            return true;
         }
-        
-        uint32_t samples32[SAMPLE_BUFFER_SIZE];
-        size_t bytesIn = 0;
-        
-        esp_err_t result = i2s_read(I2S_MIC_PORT, &samples32, sizeof(samples32), &bytesIn, portMAX_DELAY);
-        
-        if (result == ESP_OK) {
-            process32to16(samples32, sBuffer, bytesIn / sizeof(uint32_t));
-            size_t samples16_size = bytesIn / 2;
-            
-            if (WiFi.status() == WL_CONNECTED) {
-                HTTPClient http;
-                http.begin(serverUrl);
-                http.setTimeout(HTTP_TIMEOUT);
-                http.addHeader("Content-Type", "application/octet-stream");
-                int httpCode = http.POST((uint8_t*)sBuffer, samples16_size);
-                if (httpCode != HTTP_CODE_OK) {
-                    Serial.printf("❌ Error HTTP: %d\n", httpCode);
-                }
-                http.end();
-                Serial.print(".");
-            }
-        }
-    } else if (isRecording) {
-        lastDebounceTime = millis();
-        disableMicrophone();
-        
-        if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("\n🔄 Enviando fin de grabación...");
-            
-            // Implementar sistema de reintentos
-            int retryCount = 0;
-            bool success = false;
-            
-            while (retryCount < MAX_RETRIES && !success) {
-                HTTPClient http;
-                http.begin(serverUrl);
-                // HTTP/1.0 recibe PCM hasta que el servidor cierre la conexión,
-                // sin codificación chunked entre los datos de audio.
-                http.useHTTP10(true);
-                http.setTimeout(HTTP_TIMEOUT);
-                http.addHeader("Content-Type", "application/octet-stream");
-                http.addHeader("Recording-Status", "end");
-                http.addHeader("Response-Mode", "stream");
-                
-                int httpCode = http.POST("");
-                if (httpCode == HTTP_CODE_OK) {
-                    Serial.println("✅ Respuesta del servidor recibida");
-                    WiFiClient* stream = http.getStreamPtr();
-                    if (stream) {
-                        success = playAudioFromServer(stream, false);
-                    }
-                    http.end();
-                    break;
-                } else {
-                    Serial.printf("❌ Error HTTP final: %d (Intento %d de %d)\n", 
-                                httpCode, retryCount + 1, MAX_RETRIES);
-                    retryCount++;
-                    delay(1000);  // Esperar antes de reintentar
-                }
-                
-                http.end();
-            }
-            
-            if (!success) {
-                Serial.println("❌ No se pudo reproducir el audio después de varios intentos");
-            }
-        }
-        
-        isRecording = false;
-        Serial.println("=== FIN GRABACIÓN ===\n");
+        if (length > sizeof(pcm) || length % 2) return false; // Incluye marcador de error 0xffffffff.
+        if (!readExact(client, pcm, length, started) || !writeSpeaker(pcm, length)) return false;
+        heardAudio = true;
     }
-    
-    delay(10);
+}
+
+bool fetchResponse(uint32_t count) {
+    for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
+        HTTPClient http;
+        http.useHTTP10(true);
+        http.setConnectTimeout(3000);
+        http.setTimeout(HTTP_TIMEOUT);
+        http.begin(endpoint("/end?blocks=" + String(count)));
+        const char* keys[] = {"X-Audio-Format", "Transfer-Encoding"};
+        http.collectHeaders(keys, 2);
+        int code = http.POST("");
+        bool ok = false;
+        if (code == 200 && http.header("X-Audio-Format") == "pcm-s16le-framed-v1" &&
+            http.header("Transfer-Encoding").length() == 0) {
+            i2s_zero_dma_buffer(I2S_SPK_PORT);
+            if (i2s_start(I2S_SPK_PORT) == ESP_OK) ok = playFrames(http.getStreamPtr());
+            i2s_stop(I2S_SPK_PORT);
+            i2s_zero_dma_buffer(I2S_SPK_PORT);
+        }
+        http.end();
+        if (ok) return true;
+        Serial.printf("Respuesta incompleta/error HTTP %d; intento %d\n", code, attempt + 1);
+        if (code == 404 || code == 400) break;
+        delay(300);
+    }
+    return false;
+}
+
+void networkTask(void*) {
+    AudioBlock block;
+    for (;;) {
+        if (xQueueReceive(audioQueue, &block, portMAX_DELAY) != pdTRUE) continue;
+        if (block.kind == BlockKind::Start) {
+            if (!sendBlock("/start", nullptr, 0)) recordingFailed.store(true);
+        } else if (block.kind == BlockKind::Data) {
+            if (!recordingFailed.load() && !sendBlock("/chunks/" + String(block.sequence), block.pcm, block.length))
+                recordingFailed.store(true);
+        } else {
+            if (recordingFailed.load()) {
+                sendBlock("/abort", nullptr, 0);
+                Serial.println("Grabación descartada por pérdida de audio/red. Vuelve a intentarlo.");
+            } else if (!fetchResponse(block.sequence)) {
+                Serial.println("No se pudo completar la respuesta. No se crea otra consulta automática.");
+            }
+            networkBusy.store(false);
+        }
+    }
+}
+
+void endRecording() {
+    i2s_stop(I2S_MIC_PORT);
+    isRecording = false;
+    waitForRelease = true;
+    AudioBlock end{};
+    end.kind = BlockKind::End;
+    end.sequence = sequence;
+    // Micrófono ya detenido: esperar al consumidor aquí no pierde muestras.
+    if (xQueueSend(audioQueue, &end, pdMS_TO_TICKS(50000)) != pdTRUE) {
+        Serial.println("La tarea de red no responde; reiniciando para recuperar estado.");
+        ESP.restart();
+    }
+}
+
+void loop() {
+    bool pressed = digitalRead(BUTTON_PIN) == LOW;
+    if (waitForRelease) {
+        if (!pressed) waitForRelease = false;
+        delay(10);
+        return;
+    }
+    if (!isRecording) {
+        if (!pressed || networkBusy.load()) { delay(10); return; }
+        delay(30);
+        if (digitalRead(BUTTON_PIN) != LOW) return;
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("Sin Wi-Fi; no se inicia la grabación.");
+            waitForRelease = true;
+            return;
+        }
+        networkBusy.store(true);
+        recordingFailed.store(false);
+        snprintf(recordingId, sizeof(recordingId), "%012llx-%08lx-%08lx", ESP.getEfuseMac(),
+                 (unsigned long)esp_random(), (unsigned long)esp_random());
+        sequence = 0;
+        capturedBytes = 0;
+        AudioBlock start{};
+        start.kind = BlockKind::Start;
+        xQueueSend(audioQueue, &start, 0);
+        i2s_zero_dma_buffer(I2S_MIC_PORT);
+        if (i2s_start(I2S_MIC_PORT) != ESP_OK) {
+            recordingFailed.store(true);
+            endRecording();
+            return;
+        }
+        isRecording = true;
+        recordingStarted = millis();
+    }
+    if (!pressed || recordingFailed.load() || millis() - recordingStarted >= 60000 || capturedBytes >= 1920000) {
+        endRecording();
+        return;
+    }
+    static uint32_t samples[SAMPLE_BUFFER_SIZE];
+    size_t bytes = 0;
+    esp_err_t result = i2s_read(I2S_MIC_PORT, samples, sizeof(samples), &bytes, pdMS_TO_TICKS(200));
+    if (result != ESP_OK || !bytes || bytes % 4) {
+        recordingFailed.store(true);
+        endRecording();
+        return;
+    }
+    static AudioBlock block{};
+    block.kind = BlockKind::Data;
+    block.sequence = sequence;
+    block.length = min(static_cast<uint32_t>(bytes / 2), 1920000 - capturedBytes);
+    for (size_t i = 0; i < block.length / 2; ++i) {
+        int16_t sample = samples[i] >> 16;
+        memcpy(block.pcm + i * 2, &sample, 2);
+    }
+    if (xQueueSend(audioQueue, &block, 0) != pdTRUE) {
+        recordingFailed.store(true);
+        endRecording();
+    } else {
+        ++sequence;
+        capturedBytes += block.length;
+    }
 }

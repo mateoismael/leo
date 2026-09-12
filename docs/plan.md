@@ -19,8 +19,8 @@ Decisión actual: comenzar con IA conversacional por API. Las dos alternativas l
 ## 2. Comunicación y hardware existente
 
 - Identificar placa y batería y confirmar cableado.
-- Identificar grabaciones y conservar resultados para reintentos.
-- Separar captura de audio y envío de red.
+- Implementado en v2: IDs, secuencias y caché en memoria para recuperar respuestas durante un máximo de cinco minutos y mientras no se expulsen por capacidad.
+- Implementada cola FreeRTOS entre captura y envío; compilada, pendiente de temporización y continuidad en hardware.
 - Medir continuidad del audio, latencia y consumo con hardware.
 
 ## 3. Servidor personal
@@ -41,3 +41,5 @@ El usuario dispone de un servidor personal y prevé alojar allí el servicio má
 ## Alcance de simulación
 
 Las pruebas con archivos de audio permiten validar el servidor sin ESP32. La simulación de lógica y red del firmware debe mantener el audio desacoplado: no se asume simulación completa del micrófono, amplificador, batería ni comportamiento acústico.
+
+Actualización 12 de septiembre: firmware compilado para ESP32 Dev Module, core 3.3.11. Pasa 25 pruebas Python y el lector C++ probado sin placa. Detalles en [Firmware y protocolo](firmware-y-protocolo.md).
