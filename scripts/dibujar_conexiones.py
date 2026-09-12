@@ -1,0 +1,42 @@
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+ROOT=Path(__file__).resolve().parents[1]
+im=Image.new('RGB',(1560,1440),'#f3f5f9');d=ImageDraw.Draw(im)
+font='/System/Library/Fonts/Supplemental/Arial.ttf'
+bold='/System/Library/Fonts/Supplemental/Arial Bold.ttf'
+def txt(x,y,s,size=25,color='#18283c',b=False):
+ d.text((x,y),s,font=ImageFont.truetype(bold if b else font,size),fill=color)
+def box(x,y,w,h): d.rounded_rectangle((x,y,x+w,y+h),radius=22,fill='white',outline='#dbe2ea',width=2)
+def row(x,y,a,b,col):
+ txt(x,y,a,26,b=True);d.line((x+225,y+17,x+415,y+17),fill=col,width=6)
+ for xx in (x+225,x+415): d.ellipse((xx-6,y+11,xx+6,y+23),fill=col)
+ txt(x+445,y,b,26,b=True)
+txt(55,35,'Tu pulsera · mapa de conexiones',44,b=True)
+txt(55,95,'ESP32 clásico · INMP441 · MAX98357A · botón',28)
+txt(55,139,'Sigue las etiquetas impresas. Este dibujo NO representa la posición física de los pines.',24,color='#536178')
+box(45,200,710,510);box(785,200,730,510)
+txt(75,225,'1   MICRÓFONO INMP441',29,b=True)
+txt(75,278,'ESP32 / alimentación',21,color='#536178');txt(520,278,'Micrófono',21,color='#536178')
+for y,a,b,c in [(325,'GPIO 25','WS','#b77906'),(380,'GPIO 33','SCK','#7c4bce'),(435,'GPIO 32','SD','#1575bc'),(490,'3V3','VDD','#da4545'),(545,'GND','GND','#25354a'),(600,'GND','L/R','#25354a')]:row(75,y,a,b,c)
+txt(75,660,'VDD del micrófono: 3,3 V. No conectar a 5 V.',23,color='#a83535',b=True)
+txt(815,225,'2   AMPLIFICADOR MAX98357A',29,b=True)
+txt(815,278,'ESP32 / alimentación',21,color='#536178');txt(1260,278,'Amplificador',21,color='#536178')
+for y,a,b,c in [(325,'GPIO 26','BCLK','#b77906'),(380,'GPIO 27','LRC','#7c4bce'),(435,'GPIO 22','DIN','#1575bc'),(490,'GND','GND','#25354a'),(545,'3V3','SD / MODE','#da4545'),(600,'GND','GAIN','#25354a')]:row(815,y,a,b,c)
+txt(815,660,'VIN: alimentación pendiente de confirmar ↓',23,color='#9b630b',b=True)
+box(45,735,710,250);box(785,735,730,250)
+txt(75,760,'3   BOTÓN',29,b=True)
+row(75,825,'GPIO 4','Terminal A','#13806c');row(75,880,'GND','Terminal B','#25354a')
+txt(75,945,'A y B se unen solo al pulsar. No conectarlo a 3V3.',22)
+txt(815,760,'4   ALTAVOZ',29,b=True)
+row(815,825,'AMP OUT +','Altavoz +','#13806c');row(815,880,'AMP OUT −','Altavoz −','#1575bc')
+txt(815,945,'Ningún borne del altavoz va a GND.',23,color='#a83535',b=True)
+box(45,1010,1470,205)
+txt(75,1030,'ALIMENTACIÓN Y PROTOBOARD',29,b=True)
+txt(75,1080,'USB → ESP32     ·     3V3 → riel rojo     ·     GND → riel azul / negro',28,b=True)
+txt(75,1128,'Todos los GND del circuito comparten ese riel. Algunos rieles están cortados por la mitad.',24)
+txt(75,1168,'Coloca el botón cruzando la ranura central; confirma sus pares de patas antes de alimentar.',23)
+d.rounded_rectangle((45,1240,1515,1395),radius=22,fill='#fff1d7',outline='#e2b762',width=2)
+txt(75,1258,'ANTES DE ENCENDER: confirmar placa, amplificador y altavoz con una foto.',27,b=True)
+txt(75,1302,'Tus apuntes ponen VIN del amplificador a 3V3. Falta verificar que el regulador soporte su consumo.',23)
+txt(75,1342,'Sin batería ni TP4056 en esta primera prueba. Esquema provisional, no un montaje por filas.',23)
+im.save(ROOT/'docs/imagenes/conexiones-provisionales.png')
