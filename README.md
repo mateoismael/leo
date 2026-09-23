@@ -4,6 +4,8 @@ Wrist-worn voice assistant with a button and a speaker, no camera. Built on a re
 
 The main path is **Whisper on the computer → conversational model over API → speech with gTTS**. Chatterbox Multilingual remains the local alternative. Future options — on-device commands and local AI on the phone — are covered in [Local AI](docs/future-local-ai.md).
 
+![Wiring map: ESP32, INMP441 microphone, MAX98357A amplifier, button](docs/images/provisional-wiring.png)
+
 ## Status
 
 The server has been refactored with external configuration, a text-only test, a WAV test, Whisper preloading and progressive spoken responses. It keeps the original WAV mode on `/audio` and adds streaming PCM for the updated firmware. 25 Python tests and the C++ transport tests pass, along with two real end-to-end runs against the API. The key is configured locally and Whisper base is already downloaded. The firmware compiles for ESP32 Dev Module with core 3.3.11; it has not been tested on physical hardware yet, and there is no cloud deployment.
@@ -122,3 +124,7 @@ The ESP32 captures audio in one task and sends it from another through a 16-chun
 ```
 
 This compiles a copy with example credentials, without touching the board or the private `config.h`. See [protocol, tests, tooling and limits](docs/firmware-and-protocol.md). The server must be updated alongside the firmware; the Mac conversation program keeps working with the same command.
+
+## License
+
+MIT
