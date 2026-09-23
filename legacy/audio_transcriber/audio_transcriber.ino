@@ -5,26 +5,26 @@
 
 #include "config.h"
 
-// Configuración local excluida de Git
+// Local configuration excluded from Git
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 const char* serverUrl = AUDIO_SERVER_URL;
 
-// Pin del botón
+// Button pin
 const int BUTTON_PIN = 4;
 bool isRecording = false;
 
-// Tamaño del buffer de audio
+// Audio buffer size
 const int SAMPLE_BUFFER_SIZE = 1024;
 int16_t sBuffer[SAMPLE_BUFFER_SIZE];
 
-// Configuración I2S para INMP441 (Micrófono)
+// I2S configuration for the INMP441 (microphone)
 #define I2S_MIC_WS GPIO_NUM_25
 #define I2S_MIC_SD GPIO_NUM_32
 #define I2S_MIC_SCK GPIO_NUM_33
 #define I2S_MIC_PORT I2S_NUM_0
 
-// Configuración I2S para MAX98357A (Altavoz)
+// I2S configuration for the MAX98357A (speaker)
 #define I2S_SPK_BCLK GPIO_NUM_26
 #define I2S_SPK_LRC GPIO_NUM_27
 #define I2S_SPK_DIN GPIO_NUM_22
@@ -38,7 +38,7 @@ void enableMicrophone() {
     if (!microphoneEnabled) {
         ESP_ERROR_CHECK(i2s_start(I2S_MIC_PORT));
         microphoneEnabled = true;
-        Serial.println("🎤 Micrófono activado");
+        Serial.println("Microphone enabled");
     }
 }
 
@@ -46,7 +46,7 @@ void disableMicrophone() {
     if (microphoneEnabled) {
         ESP_ERROR_CHECK(i2s_stop(I2S_MIC_PORT));
         microphoneEnabled = false;
-        Serial.println("🎤 Micrófono desactivado");
+        Serial.println("Microphone disabled");
     }
 }
 
@@ -74,7 +74,7 @@ void setup() {
     
     pinMode(BUTTON_PIN, INPUT_PULLUP);
     
-    // Conexión WiFi
+    // Wi-Fi connection
     Serial.print("📡 Conectando a WiFi");
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
@@ -126,7 +126,7 @@ void setup() {
     };
 
     // Instalar drivers I2S
-    Serial.println("🎯 Configurando I2S para micrófono...");
+    Serial.println("Configuring I2S for the microphone...");
     ESP_ERROR_CHECK(i2s_driver_install(I2S_MIC_PORT, &i2s_mic_config, 0, NULL));
     ESP_ERROR_CHECK(i2s_set_pin(I2S_MIC_PORT, &mic_pin_config));
     
@@ -157,7 +157,7 @@ bool playAudioFromServer(WiFiClient* client) {
     uint8_t buffer[bufferSize];
     size_t bytesWritten = 0;
     int totalBytesRead = 0;
-    int headerSize = 44;  // Tamaño del header WAV
+    int headerSize = 44;  // WAV header size
 
     // Esperar datos disponibles
     unsigned long timeout = millis() + 5000;
@@ -174,7 +174,7 @@ bool playAudioFromServer(WiFiClient* client) {
         client->read();
     }
 
-    Serial.println("▶️ Iniciando reproducción...");
+    Serial.println("Starting playback...");
     i2s_zero_dma_buffer(I2S_SPK_PORT);
     enableSpeaker();
 
@@ -245,7 +245,7 @@ void loop() {
         disableMicrophone();
         
         if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("\n🔄 Enviando fin de grabación...");
+            Serial.println("\nSending end of recording...");
             HTTPClient http;
             http.begin(serverUrl);
             http.addHeader("Content-Type", "application/octet-stream");

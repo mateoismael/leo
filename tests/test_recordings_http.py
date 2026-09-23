@@ -1,4 +1,4 @@
-"""Recuperación por TCP real; proveedores sustituidos, sin llamadas externas."""
+"""Recovery over real TCP; providers stubbed, no external calls."""
 import http.client
 import socket
 import struct
@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import Mock
 
 import uvicorn
-from server.leov1ser import create_app
+from server.app import create_app
 
 
 class RealHTTPTests(unittest.TestCase):
@@ -39,7 +39,7 @@ class RealHTTPTests(unittest.TestCase):
             deadline = time.monotonic() + 5
             while not server.started:
                 if time.monotonic() > deadline:
-                    self.fail('Servidor local no inició')
+                    self.fail('Local server did not start')
                 time.sleep(0.01)
             base = '/audio/recordings/http-0001'
             _, r = post(base + '/start')

@@ -1,3 +1,3 @@
 -r requirements.in
-# Whisper ejecuta la transcripción en la computadora; el modelo conversacional usa API.
+# Whisper runs transcription on the computer; the conversational model uses the API.
 openai-whisper

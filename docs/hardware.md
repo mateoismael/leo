@@ -1,32 +1,49 @@
-# Hardware de referencia
+# Reference hardware
 
-Objetivo confirmado: pulsera de voz, sin cámara.
+Confirmed goal: a voice wristband, no camera.
 
-| Parte | Referencia recuperada |
+| Part | Recovered reference |
 |---|---|
-| Controlador | ESP32; placa exacta pendiente |
-| Micrófono | INMP441 |
-| Amplificador | MAX98357; variante física pendiente |
-| Altavoz | Tamaño, impedancia y potencia pendientes |
-| Alimentación | Batería y módulo TP4056; identificar regulación, protección y capacidad |
-| Entrada | Botón e interruptor |
+| Controller | ESP32; exact board pending |
+| Microphone | INMP441 |
+| Amplifier | MAX98357; physical variant pending |
+| Speaker | Size, impedance and power pending |
+| Power | Battery and TP4056 module; regulation, protection and capacity to be identified |
+| Input | Button and switch |
 
-## Pines de ambos firmwares
+## Pins used by both firmwares
 
-- Botón: GPIO4, activo a GND con pull-up interno.
-- Micrófono: WS 25, SD 32, SCK 33; I2S0.
-- Amplificador: BCLK 26, LRC 27, DIN 22; I2S1.
+- Button: GPIO4, active low with internal pull-up.
+- Microphone: WS 25, SD 32, SCK 33; I2S0.
+- Amplifier: BCLK 26, LRC 27, DIN 22; I2S1.
 
-Este mapa describe el código recuperado, no una comprobación del montaje físico. El circuito de alimentación sigue pendiente de reconstrucción y no se debe inferir a partir de estas señales.
+This map describes the recovered code, not a check of the physical build. The
+power circuit still needs to be reconstructed and must not be inferred from
+these signals.
 
-Se utilizarán las piezas existentes como referencia si siguen disponibles. Una placa compacta sin cámara, posiblemente ESP32-S3 con PSRAM, se evaluará después de recuperar el software. Aún no hay lista de compras ni PCB final.
+The existing parts will be reused as a reference if they are still available. A
+compact camera-less board, possibly an ESP32-S3 with PSRAM, will be evaluated
+once the software is recovered. There is no shopping list and no final PCB yet.
 
-## Mapa visual — 12 de septiembre de 2026
+## Visual map — 12 September 2026
 
-![Mapa provisional de conexiones](imagenes/conexiones-provisionales.png)
+![Provisional wiring map](images/provisional-wiring.png)
 
-Verificado contra los GPIO del firmware y las etiquetas del export Notion. Es un mapa eléctrico por etiquetas, no una distribución física: falta identificar la placa exacta y los módulos mediante fotografías legibles antes de dibujar posiciones/filas en protoboard. El VIN del amplificador queda pendiente: los apuntes dicen 3V3, pero falta validar el consumo permitido por el regulador de la placa y la impedancia/potencia del altavoz. Para la prueba inicial se propone USB, sin batería ni TP4056.
+Verified against the firmware GPIOs and the labels in the exported notes. It is
+an electrical map by label, not a physical layout: the exact board and modules
+still need to be identified from legible photographs before drawing breadboard
+positions or rows. The amplifier VIN is pending: the notes say 3V3, but the
+current allowed by the board regulator and the speaker impedance and power still
+need validating. USB is proposed for the initial test, with no battery and no
+TP4056.
 
-SD del INMP441 es señal de datos y va al GPIO32; SD/MODE del MAX98357A es selección/habilitación y se muestra a 3V3, como en la nota inicial de Notion. No confundir ambos. L/R del micrófono a GND coincide con el canal izquierdo configurado. GAIN a GND conserva la configuración histórica. Todos los GND son comunes; no hay dos masas separadas como podría sugerir el apunte antiguo.
+SD on the INMP441 is a data signal and goes to GPIO32; SD/MODE on the MAX98357A
+is select/enable and is shown at 3V3, as in the original note. Do not confuse
+the two. L/R on the microphone tied to GND matches the configured left channel.
+GAIN tied to GND preserves the historical configuration. All grounds are common;
+there are no two separate grounds, whatever the old note might suggest.
 
-La salida del amplificador es diferencial: los dos cables del altavoz van a OUT+/OUT−, ninguno a GND. El módulo de referencia Adafruit pide altavoz de al menos 4 ohmios. [Pinouts de referencia del MAX98357A](https://learn.adafruit.com/adafruit-max98357-i2s-class-d-mono-amp/pinouts). La variante física del usuario sigue pendiente de confirmar.
+The amplifier output is differential: both speaker wires go to OUT+/OUT−, and
+neither goes to GND. The Adafruit reference module asks for a speaker of at
+least 4 ohms. [MAX98357A reference pinouts](https://learn.adafruit.com/adafruit-max98357-i2s-class-d-mono-amp/pinouts).
+The user's physical variant is still to be confirmed.

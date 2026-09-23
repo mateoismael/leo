@@ -30,9 +30,9 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(len(pcm), 16000)
 
     def test_short_recording_does_not_proceed(self):
-        with self.assertRaisesRegex(MicrophoneError, 'corta'):
+        with self.assertRaisesRegex(MicrophoneError, 'too short'):
             self.capture(0.05)
 
     def test_overflow_does_not_proceed(self):
-        with self.assertRaisesRegex(MicrophoneError, 'muestras'):
+        with self.assertRaisesRegex(MicrophoneError, 'samples were lost'):
             self.capture(0.5, 'overflow')

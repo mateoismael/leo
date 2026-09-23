@@ -1,22 +1,22 @@
-"""Prueba interactiva con altavoces del Mac; no requiere ESP32."""
+"""Interactive test through the Mac speakers; no ESP32 required."""
 import argparse
 import json
 import time
 import wave
 from pathlib import Path
 
-from leov1ser import ROOT, RATE, VoiceAssistant, read_wav
+from app import ROOT, RATE, VoiceAssistant, read_wav
 from playback import PCMPlayer
 from microphone import MicrophoneError, wait_and_record
 
 
 def play_stream(chunks, output, started):
-    """Guarda el PCM y lo entrega al reproductor según llega."""
+    """Store PCM and hand it to the player as it arrives."""
     output.parent.mkdir(parents=True, exist_ok=True)
     first = None
     count = 0
     try:
-        # El dispositivo recibe silencio mientras se esperan los primeros datos.
+        # The device receives silence while the first bytes are awaited.
         with PCMPlayer(RATE) as player, wave.open(str(output), 'wb') as wav:
             wav.setnchannels(1)
             wav.setsampwidth(2)
@@ -28,7 +28,7 @@ def play_stream(chunks, output, started):
                     continue
                 if first is None:
                     first = time.perf_counter() - started
-                    print(f'Primer audio disponible: {first:.2f} s (el reproductor añade su búfer).', flush=True)
+                    print(f'First audio available: {first:.2f} s (the player adds its own buffer).', flush=True)
                 wav.writeframesraw(chunk)
                 player.write(chunk)
                 count += len(chunk)
@@ -37,10 +37,10 @@ def play_stream(chunks, output, started):
                 raise RuntimeError('La respuesta no produjo audio.')
             player.finish()
             if player.buffer.underflows:
-                print(f'Aviso: {player.buffer.underflows} interrupciones de salida de audio detectadas.')
-        print(json.dumps({'primer_pcm_s': first, 'entrega_completa_s': round(delivered, 3),
-                          'duracion_audio_s': count / (RATE * 2)}, ensure_ascii=False))
-        print('WAV guardado:', output.resolve())
+                print(f'Warning: {player.buffer.underflows} audio output dropouts detected.')
+        print(json.dumps({'first_pcm_s': first, 'full_delivery_s': round(delivered, 3),
+                          'audio_duration_s': count / (RATE * 2)}, ensure_ascii=False))
+        print('WAV saved:', output.resolve())
     finally:
         if hasattr(chunks, 'close'):
             chunks.close()
@@ -52,10 +52,10 @@ def main():
     mode.add_argument('--text', help='Una pregunta escrita: API y respuesta hablada')
     mode.add_argument('--audio', type=Path, help='Pregunta WAV PCM16 mono 16 kHz: Whisper, API y voz')
     mode.add_argument('--replay', type=Path, help='Reproducir WAV existente; sin internet ni consumo')
-    mode.add_argument('--mic', action='store_true', help='Conversar por el micrófono (modo predeterminado)')
+    mode.add_argument('--mic', action='store_true', help='Talk through the microphone (default mode)')
     mode.add_argument('--chat', action='store_true', help='Conversar escribiendo')
     mode.add_argument('--list-mics', action='store_true', help='Mostrar dispositivos de audio')
-    parser.add_argument('--device', type=int, help='Índice del micrófono; por defecto el del sistema')
+    parser.add_argument('--device', type=int, help='Microphone index; defaults to the system input')
     parser.add_argument('--output', type=Path, default=ROOT / 'recordings/prueba-mac.wav')
     args = parser.parse_args()
     if args.list_mics:
@@ -72,8 +72,8 @@ def main():
             try:
                 info = sd.query_devices(args.device, 'input')
             except sd.PortAudioError as exc:
-                raise MicrophoneError('No hay un micrófono disponible. Revisa la entrada de sonido de macOS.') from exc
-            print('Micrófono:', info['name'])
+                raise MicrophoneError('No microphone available. Check the macOS sound input.') from exc
+            print('Microphone:', info['name'])
             print('Cargando Whisper una sola vez…', flush=True)
             assistant.load_transcriber()
             print('Listo. Cada pregunta usa la API. q termina.', flush=True)
@@ -106,12 +106,12 @@ def main():
         else:
             print('Escribe tu pregunta y pulsa Enter. Cada pregunta usa la API; /salir termina.', flush=True)
             while True:
-                text = args.text if args.text is not None else input('\nTú: ').strip()
+                text = args.text if args.text is not None else input('\nYou: ').strip()
                 if text == '/salir':
                     break
                 if not text:
                     if args.text is not None:
-                        parser.error('La pregunta está vacía.')
+                        parser.error('The question is empty.')
                     continue
                 play_stream(assistant.stream_speech(text), args.output, time.perf_counter())
                 print('Respuesta:', assistant.history[-1]['content'])
@@ -125,8 +125,8 @@ def main():
     except ImportError:
         parser.exit(1, 'Instala las dependencias: .venv/bin/python -m pip install -r server/requirements-mac.in\n')
     except Exception as exc:
-        # Los SDK pueden incluir datos de peticiones en excepciones: no imprimirlos.
-        parser.exit(1, f'No se pudo completar la prueba ({type(exc).__name__}). Revisa conexión y salida de audio.\n')
+        # SDKs can embed request data in exceptions: never print them.
+        parser.exit(1, f'Could not complete the test ({type(exc).__name__}). Check the connection and audio output.\n')
 
 
 if __name__ == '__main__':

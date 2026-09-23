@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import wave
 
 from fastapi.testclient import TestClient
-from server.leov1ser import VoiceAssistant, PipelineError, pcm_to_wav, create_app, MAX_BYTES, LockedStreamingResponse
+from server.app import VoiceAssistant, PipelineError, pcm_to_wav, create_app, MAX_BYTES, LockedStreamingResponse
 from server.tts_chatterbox import split_text
 
 
@@ -28,7 +28,7 @@ class ServerTests(unittest.TestCase):
         chunks = assistant.stream_speech('Pregunta')
         self.assertEqual(len(next(chunks)), 2048)
         chunks.close()
-        self.assertTrue(closed.wait(2), 'El productor quedó bloqueado en la cola.')
+        self.assertTrue(closed.wait(2), 'The producer stayed blocked on the queue.')
 
     def test_stream_lock_is_held_until_send_fails(self):
         lock = threading.Lock()
@@ -47,7 +47,7 @@ class ServerTests(unittest.TestCase):
             async def send(message):
                 self.assertTrue(lock.locked())
                 if message['type'] == 'http.response.body':
-                    raise RuntimeError('Conexión perdida')
+                    raise RuntimeError('Connection lost')
 
             async def receive():
                 await asyncio.sleep(10)

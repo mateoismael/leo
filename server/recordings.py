@@ -1,4 +1,4 @@
-"""Protocolo v2: bloques idempotentes y resultado recuperable en memoria."""
+"""Protocol v2: idempotent chunks and an in-memory recoverable result."""
 import re
 import struct
 import threading
@@ -40,12 +40,12 @@ class RecordingStore:
     def get(self, key):
         self.prune()
         if key not in self.jobs:
-            raise HTTPException(404, 'Grabación inexistente o caducada; no se regenera.')
+            raise HTTPException(404, 'Recording missing or expired; it is not regenerated.')
         return self.jobs[key]
 
     def start(self, key):
         if not re.fullmatch(r'[a-zA-Z0-9-]{8,80}', key):
-            raise HTTPException(400, 'Identificador inválido.')
+            raise HTTPException(400, 'Invalid identifier.')
         with self.lock:
             self.prune()
             if key in self.jobs:
@@ -54,24 +54,24 @@ class RecordingStore:
                 completed = [(job.updated, key) for key, job in self.jobs.items()
                              if job.state in ('done', 'failed', 'aborted')]
                 if not completed:
-                    raise HTTPException(429, 'Caché llena; espera a que caduquen grabaciones.')
+                    raise HTTPException(429, 'Cache full; wait for recordings to expire.')
                 del self.jobs[min(completed)[1]]
             self.jobs[key] = Recording()
 
     def append(self, key, seq, body):
         if not body or len(body) > 2048 or len(body) % 2 or seq < 0:
-            raise HTTPException(400, 'Bloque PCM inválido.')
+            raise HTTPException(400, 'Invalid PCM chunk.')
         with self.lock:
             job = self.get(key)
             if job.state != 'uploading':
-                raise HTTPException(409, 'La grabación ya está cerrada.')
+                raise HTTPException(409, 'The recording is already closed.')
             if seq < len(job.blocks):
                 start, length = job.blocks[seq]
                 if job.pcm[start:start + length] != body:
-                    raise HTTPException(409, 'El bloque repetido cambió de contenido.')
+                    raise HTTPException(409, 'The repeated chunk changed content.')
             elif seq == len(job.blocks):
                 if len(job.pcm) + len(body) > MAX_PCM:
-                    raise HTTPException(413, 'Grabación demasiado larga.')
+                    raise HTTPException(413, 'Recording too long.')
                 job.blocks.append((len(job.pcm), len(body)))
                 job.pcm.extend(body)
             else:
@@ -82,7 +82,7 @@ class RecordingStore:
         with self.lock:
             job = self.get(key)
             if block_count != len(job.blocks) or len(job.pcm) < 6400:
-                raise HTTPException(400, 'Grabación incompleta o demasiado corta.')
+                raise HTTPException(400, 'Recording incomplete or too short.')
             if job.state == 'uploading':
                 if not self.pipeline_lock.acquire(blocking=False):
                     raise HTTPException(409, 'Asistente ocupado; reintenta el mismo ID.')
@@ -94,8 +94,8 @@ class RecordingStore:
                     self.pipeline_lock.release()
                     raise
             elif job.state == 'aborted':
-                raise HTTPException(409, 'Grabación cancelada.')
-            # Repetir end se conecta al mismo resultado, incluso tras un error.
+                raise HTTPException(409, 'Recording cancelled.')
+            # Repeating end attaches to the same result, even after an error.
             return job
 
     def abort(self, key):
@@ -126,7 +126,7 @@ class RecordingStore:
             if total:
                 terminal = 0
         except Exception:
-            # No enviar al dispositivo detalles de proveedores ni credenciales.
+            # Never send provider details or credentials to the device.
             pass
         finally:
             try:
@@ -158,7 +158,7 @@ class RecordingStore:
                     frame = struct.pack('<I', 0xffffffff)
                 else:
                     return
-            # Nunca retener el candado de la caché durante el envío por red.
+            # Never hold the cache lock while sending over the network.
             yield frame
             if frame == struct.pack('<I', 0xffffffff):
                 return

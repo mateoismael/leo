@@ -1,45 +1,52 @@
-# Plan de recuperación
+# Recovery plan
 
-Decisión actual: comenzar con IA conversacional por API. Las dos alternativas locales se conservan para después en [IA local futura](ia-local-futuro.md).
+Current decision: start with conversational AI over API. Both local
+alternatives are kept for later in [Future local AI](future-local-ai.md).
 
-## 1. Software en la computadora
+## 1. Software on the computer
 
-- Instaladas dependencias de servidor y Whisper en `.venv`; versiones del entorno macOS/Python 3.9 guardadas en `server/requirements-dev-lock.txt`.
-- Implementado: configuración externa y etapas separadas de transcripción, conversación y voz.
-- Implementado: CLI con `--text`, `--audio` y `--check`, sin ESP32.
-- Verificada una consulta mínima real a GPT-5 nano.
-- Verificado el recorrido completo sin ESP32 con voz sintetizada: Whisper transcribió correctamente, GPT-5 nano respondió «Lima» y gTTS produjo el WAV final. Tiempos de la primera ejecución: 5.891 s de transcripción, 3.522 s de API y 0.548 s de voz. Uso: 47 tokens de entrada y 11 de salida; coste estimado de la llamada: USD 0.00000675 según la tarifa consultada.
-- Verificado el envío HTTP por bloques, la señal de fin y los modos de respuesta WAV y PCM progresivo.
-- Integrado y probado Chatterbox Multilingual como alternativa local. gTTS continúa como salida predeterminada por su menor latencia.
-- Prueba real de gTTS: generó 2.42 segundos de audio compatible en 1.44 segundos, sin llamada al modelo conversacional.
-- El servidor precarga Whisper antes de aceptar audio y `/health` indica si quedó cargado. Esto traslada el arranque lento al inicio del servidor; la transcripción caliente medida sigue siendo aproximadamente 0.44 s.
-- Implementado: pregunta sin duplicación, estados HTTP de error, validación WAV/PCM y streaming por frases. Once pruebas automatizadas con proveedores sustituidos.
-- Una respuesta real de tres frases entregó el primer audio en 4.580 s y terminó de generarse en 8.089 s: la reproducción puede adelantarse 3.509 s. Detalles y límites en [Estado y próximos pasos](estado-y-proximos-pasos.md).
+- Server dependencies and Whisper installed in `.venv`; the macOS/Python 3.9 environment versions are recorded in `server/requirements-dev-lock.txt`.
+- Done: external configuration and separate transcription, conversation and speech stages.
+- Done: CLI with `--text`, `--audio` and `--check`, no ESP32 required.
+- A minimal real query against GPT-5 nano was verified.
+- The full path without an ESP32 was verified with synthesised speech: Whisper transcribed correctly, GPT-5 nano answered "Lima" and gTTS produced the final WAV. First-run timings: 5.891 s transcription, 3.522 s API and 0.548 s speech. Usage: 47 input tokens and 11 output; estimated call cost USD 0.00000675 at the rate consulted.
+- Chunked HTTP upload, the end signal and both WAV and progressive PCM response modes were verified.
+- Chatterbox Multilingual was integrated and tested as the local alternative. gTTS remains the default output for its lower latency.
+- Real gTTS test: produced 2.42 seconds of compatible audio in 1.44 seconds, with no call to the conversational model.
+- The server preloads Whisper before accepting audio, and `/health` reports whether it stayed loaded. This moves the slow start to server start-up; measured warm transcription is still around 0.44 s.
+- Done: no duplicated question, HTTP error states, WAV/PCM validation and sentence-level streaming. Eleven automated tests with stubbed providers.
+- A real three-sentence answer delivered first audio at 4.580 s and finished generating at 8.089 s: playback can start 3.509 s early. Details and limits in [Status and next steps](status-and-next-steps.md).
 
-## 2. Comunicación y hardware existente
+## 2. Communication and existing hardware
 
-- Identificar placa y batería y confirmar cableado.
-- Implementado en v2: IDs, secuencias y caché en memoria para recuperar respuestas durante un máximo de cinco minutos y mientras no se expulsen por capacidad.
-- Implementada cola FreeRTOS entre captura y envío; compilada, pendiente de temporización y continuidad en hardware.
-- Medir continuidad del audio, latencia y consumo con hardware.
+- Identify the board and battery, and confirm the wiring.
+- Done in v2: IDs, sequences and an in-memory cache to recover answers for up to five minutes, as long as they are not evicted for capacity.
+- A FreeRTOS queue between capture and upload is implemented and compiles; timing and continuity on hardware are still pending.
+- Measure audio continuity, latency and power draw on hardware.
 
-## 3. Servidor personal
+## 3. Personal server
 
-El usuario dispone de un servidor personal y prevé alojar allí el servicio más adelante. Todavía no se conocen sistema operativo, recursos, dominio ni forma de acceso. No se ha realizado ninguna conexión o despliegue.
+A personal server is available and the service is expected to be hosted there
+later. Its operating system, resources, domain and access method are not yet
+known. No connection or deployment has been made.
 
-- Elegir ubicación del procesamiento de voz según recursos y latencia.
-- Preparar despliegue reproducible y gestión de secretos.
-- Incorporar HTTPS, autenticación del dispositivo y límites de peticiones y audio.
-- Configurar supervisión, reinicio y comprobación de salud.
+- Choose where speech processing runs, based on resources and latency.
+- Prepare a reproducible deployment and secret management.
+- Add HTTPS, device authentication and request and audio limits.
+- Set up supervision, restart and health checking.
 
-## 4. Pulsera compacta
+## 4. Compact wristband
 
-- Fijar autonomía, peso y dimensiones objetivo.
-- Elegir placa sin cámara, batería y salida de audio.
-- Diseñar PCB y carcasa, fabricar prototipo y probar comodidad.
+- Fix target battery life, weight and dimensions.
+- Choose a camera-less board, battery and audio output.
+- Design the PCB and enclosure, build a prototype and test comfort.
 
-## Alcance de simulación
+## Scope of simulation
 
-Las pruebas con archivos de audio permiten validar el servidor sin ESP32. La simulación de lógica y red del firmware debe mantener el audio desacoplado: no se asume simulación completa del micrófono, amplificador, batería ni comportamiento acústico.
+Tests with audio files validate the server without an ESP32. Simulating the
+firmware logic and networking must keep audio decoupled: full simulation of the
+microphone, amplifier, battery or acoustic behaviour is not assumed.
 
-Actualización 12 de septiembre: firmware compilado para ESP32 Dev Module, core 3.3.11. Pasa 25 pruebas Python y el lector C++ probado sin placa. Detalles en [Firmware y protocolo](firmware-y-protocolo.md).
+Update, 12 September: firmware compiles for ESP32 Dev Module, core 3.3.11. It
+passes 25 Python tests, and the C++ reader was tested without a board. Details
+in [Firmware and protocol](firmware-and-protocol.md).

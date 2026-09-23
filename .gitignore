@@ -1,4 +1,4 @@
-# Configuración privada
+# Private configuration
 .env
 .env.*
 !.env.example
@@ -6,7 +6,7 @@ config.h
 *.pem
 *.key
 
-# Python y compilación
+# Python and build artefacts
 .venv/
 venv/
 __pycache__/
@@ -18,7 +18,7 @@ build/
 dist/
 *.egg-info/
 
-# Audio, modelos y archivos recuperados
+# Audio, models and recovered files
 *.wav
 *.mp3
 *.pcm
@@ -29,7 +29,7 @@ dist/
 recordings/
 models/
 
-# Sistema y editor
+# System and editor
 .DS_Store
 .idea/
 .vscode/

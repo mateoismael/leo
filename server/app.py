@@ -1,4 +1,4 @@
-"""Asistente de voz: Whisper local, respuesta por API y voz con gTTS."""
+"""Voice assistant: local Whisper, API completion and gTTS speech."""
 import argparse
 from contextlib import asynccontextmanager
 import importlib.util
@@ -26,7 +26,7 @@ load_dotenv(ROOT / '.env')
 RATE = 16000
 MAX_SECONDS = 60
 MAX_BYTES = RATE * 2 * MAX_SECONDS
-LOGGER = logging.getLogger('pulsera-voz')
+LOGGER = logging.getLogger('leo')
 
 
 class PipelineError(Exception):
@@ -67,7 +67,7 @@ def read_wav(path):
         if (wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getcomptype()) != (1, 2, RATE, 'NONE'):
             raise ValueError('El archivo debe ser WAV PCM16 mono a 16000 Hz.')
         if wav.getnframes() > RATE * MAX_SECONDS:
-            raise ValueError('La grabación supera 60 segundos.')
+            raise ValueError('Recording exceeds 60 seconds.')
         pcm = wav.readframes(wav.getnframes())
     pcm_to_wav(pcm)
     return pcm
@@ -92,13 +92,15 @@ class VoiceAssistant:
             key_name = 'OPENAI_API_KEY' if self.provider == 'openai' else 'OPENROUTER_API_KEY'
             key = os.getenv(key_name, '').strip()
             if not key:
-                raise PipelineError(f'Falta {key_name} en el archivo .env de la raíz.')
+                raise PipelineError(f'Missing {key_name} in the root .env file.')
             from openai import OpenAI
             base_url = 'https://api.openai.com/v1' if self.provider == 'openai' else 'https://openrouter.ai/api/v1'
             self.client = OpenAI(api_key=key, base_url=base_url, timeout=60.0, max_retries=0)
         if not self.model:
             raise PipelineError('Configura el identificador del modelo del proveedor en .env.')
         messages = [
+            # Spoken output language. Kept in Spanish on purpose: it defines what the
+            # device says out loud, not how the code reads.
             {'role': 'system', 'content': 'Responde en español para un asistente de voz. Usa como máximo 50 palabras, frases completas, sin listas, viñetas ni formato Markdown.'},
             *self.history[-10:],
             {'role': 'user', 'content': text},
@@ -114,7 +116,7 @@ class VoiceAssistant:
                 options.update(max_tokens=180, temperature=0.5)
             return self.client.chat.completions.create(**options)
         except Exception as exc:
-            raise PipelineError('La API no respondió correctamente. Comprueba clave, acceso al modelo y conexión.') from exc
+            raise PipelineError('The API did not respond correctly. Check the key, model access and connection.') from exc
 
     def answer(self, text):
         result = self._request(text)
@@ -122,14 +124,14 @@ class VoiceAssistant:
         self.usage = usage.model_dump() if usage is not None and hasattr(usage, 'model_dump') else {}
         answer = (result.choices[0].message.content or '').strip()
         if not answer:
-            raise PipelineError('La API devolvió una respuesta vacía.')
+            raise PipelineError('The API returned an empty response.')
         self.history = (self.history + [
             {'role': 'user', 'content': text}, {'role': 'assistant', 'content': answer},
         ])[-10:]
         return answer
 
     def answer_sentences(self, text):
-        """Entrega frases a medida que llegan los tokens del modelo."""
+        """Yield sentences as the model tokens arrive."""
         events = None
         try:
             events = self._request(text, stream=True)
@@ -159,13 +161,13 @@ class VoiceAssistant:
         except PipelineError:
             raise
         except Exception as exc:
-            raise PipelineError('La transmisión de la API se interrumpió.') from exc
+            raise PipelineError('The API stream was interrupted.') from exc
         finally:
             if events is not None and hasattr(events, 'close'):
                 events.close()
         answer = ' '.join(complete).strip()
         if not answer:
-            raise PipelineError('La API devolvió una respuesta vacía.')
+            raise PipelineError('The API returned an empty response.')
         self.history = (self.history + [
             {'role': 'user', 'content': text.strip()}, {'role': 'assistant', 'content': answer},
         ])[-10:]
@@ -183,12 +185,12 @@ class VoiceAssistant:
         self.load_transcriber()
         text = self.whisper.transcribe(str(wav_path), language='es', fp16=False)['text'].strip()
         if not text:
-            raise PipelineError('No se detectó voz reconocible en la grabación.')
+            raise PipelineError('No recognizable speech detected in the recording.')
         return text
 
     def synthesize_pcm(self, text):
         if not shutil.which('ffmpeg'):
-            raise PipelineError('FFmpeg no está disponible en PATH.')
+            raise PipelineError('FFmpeg is not available on PATH.')
         provider = os.getenv('TTS_PROVIDER', 'gtts').strip().lower()
         if provider not in ('chatterbox', 'gtts'):
             raise PipelineError('TTS_PROVIDER debe ser chatterbox o gtts.')
@@ -223,9 +225,9 @@ class VoiceAssistant:
                     '-acodec', 'pcm_s16le', '-ar', str(RATE), '-ac', '1', 'pipe:1',
                 ], input=mp3.getvalue(), capture_output=True, timeout=60, check=True)
         except subprocess.TimeoutExpired as exc:
-            raise PipelineError(f'La generación de voz con {provider} agotó el tiempo.') from exc
+            raise PipelineError(f'Speech generation with {provider} timed out.') from exc
         except subprocess.CalledProcessError as exc:
-            raise PipelineError(f'La generación de voz con {provider} falló.') from exc
+            raise PipelineError(f'Speech generation with {provider} failed.') from exc
         pcm_to_wav(result.stdout)
         return result.stdout
 
@@ -233,7 +235,7 @@ class VoiceAssistant:
         return pcm_to_wav(self.synthesize_pcm(text))
 
     def stream_speech(self, text, chunk_size=2048):
-        """Solapa la recepción del modelo con la síntesis y entrega PCM incremental."""
+        """Overlap model streaming with synthesis and yield incremental PCM."""
         sentences = queue.Queue(maxsize=4)
         finished = object()
         stopped = threading.Event()
@@ -277,7 +279,7 @@ class VoiceAssistant:
                     yield pcm[offset:offset + chunk_size]
         finally:
             stopped.set()
-            # Una lectura de red activa puede tardar hasta el timeout del SDK.
+            # An active network read can block until the SDK timeout.
             worker.join(timeout=0.2)
 
     def prepare_stream(self, pcm):
@@ -296,14 +298,14 @@ class VoiceAssistant:
             path.write_bytes(wav)
             start = time.perf_counter()
             text = self.transcribe(path)
-            timings['transcripcion'] = round(time.perf_counter() - start, 3)
+            timings['transcription'] = round(time.perf_counter() - start, 3)
         start = time.perf_counter()
         answer = self.answer(text)
         timings['api'] = round(time.perf_counter() - start, 3)
         start = time.perf_counter()
         audio = self.speak(answer)
-        timings['voz'] = round(time.perf_counter() - start, 3)
-        return audio, {'transcripcion': text, 'respuesta': answer, 'segundos': timings, 'uso_api': self.usage}
+        timings['speech'] = round(time.perf_counter() - start, 3)
+        return audio, {'transcription': text, 'answer': answer, 'seconds': timings, 'api_usage': self.usage}
 
 
 def create_app(assistant=None):
@@ -332,16 +334,16 @@ def create_app(assistant=None):
     def health():
         return {
             'status': 'ok',
-            'modo': 'api',
-            'modelo': assistant.model,
-            'whisper_cargado': assistant.whisper is not None if isinstance(assistant, VoiceAssistant) else None,
+            'mode': 'api',
+            'model': assistant.model,
+            'whisper_loaded': assistant.whisper is not None if isinstance(assistant, VoiceAssistant) else None,
         }
 
     @app.post('/audio')
     async def audio(request: Request):
-        # Compatibilidad de un único dispositivo con el firmware recuperado.
+        # Single-device compatibility with the recovered firmware.
         if not lock.acquire(blocking=False):
-            raise HTTPException(409, 'Hay una grabación en procesamiento.')
+            raise HTTPException(409, 'A recording is already being processed.')
         streaming = False
         try:
             body = bytearray()
@@ -352,7 +354,7 @@ def create_app(assistant=None):
                 body.extend(chunk)
             if request.headers.get('Recording-Status') == 'end':
                 if body:
-                    raise HTTPException(400, 'La petición final debe tener cuerpo vacío.')
+                    raise HTTPException(400, 'The final request must have an empty body.')
                 pcm = bytes(buffer)
                 buffer.clear()
                 try:
@@ -386,7 +388,7 @@ def create_app(assistant=None):
                 raise HTTPException(400, 'El bloque PCM debe contener muestras completas de 16 bits.')
             if len(buffer) + len(body) > MAX_BYTES:
                 buffer.clear()
-                raise HTTPException(413, 'La grabación supera 60 segundos; buffer reiniciado.')
+                raise HTTPException(413, 'Recording exceeds 60 seconds; buffer reset.')
             buffer.extend(body)
             return {'status': 'ok'}
         finally:
@@ -411,23 +413,23 @@ def main():
     args = parser.parse_args()
     if args.check:
         checks = {
-            'api_key_configurada': bool(os.getenv('OPENROUTER_API_KEY' if os.getenv('LLM_PROVIDER') == 'openrouter' else 'OPENAI_API_KEY', '').strip()),
-            'ffmpeg_disponible': bool(shutil.which('ffmpeg')),
-            'whisper_instalado': importlib.util.find_spec('whisper') is not None,
-            'modelo_api': VoiceAssistant().model,
+            'api_key_configured': bool(os.getenv('OPENROUTER_API_KEY' if os.getenv('LLM_PROVIDER') == 'openrouter' else 'OPENAI_API_KEY', '').strip()),
+            'ffmpeg_available': bool(shutil.which('ffmpeg')),
+            'whisper_installed': importlib.util.find_spec('whisper') is not None,
+            'api_model': VoiceAssistant().model,
             'tts': os.getenv('TTS_PROVIDER', 'gtts'),
-            'chatterbox_disponible': Path(os.getenv('CHATTERBOX_PYTHON', '')).is_file(),
+            'chatterbox_available': Path(os.getenv('CHATTERBOX_PYTHON', '')).is_file(),
         }
         print(json.dumps(checks, ensure_ascii=False, indent=2))
-        required = ('api_key_configurada', 'ffmpeg_disponible', 'whisper_instalado')
+        required = ('api_key_configured', 'ffmpeg_available', 'whisper_installed')
         if checks['tts'] == 'chatterbox':
-            required += ('chatterbox_disponible',)
+            required += ('chatterbox_available',)
         return 0 if all(checks[k] for k in required) else 1
     assistant = VoiceAssistant()
     try:
         if args.text is not None:
             print(assistant.answer(args.text))
-            print(json.dumps({'uso_api': assistant.usage}, ensure_ascii=False))
+            print(json.dumps({'api_usage': assistant.usage}, ensure_ascii=False))
         elif args.audio is not None:
             pcm = read_wav(args.audio)
             if not os.getenv('OPENAI_API_KEY' if assistant.provider == 'openai' else 'OPENROUTER_API_KEY', '').strip():

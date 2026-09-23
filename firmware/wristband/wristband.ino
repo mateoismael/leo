@@ -35,10 +35,10 @@ void setup() {
     Serial.begin(115200);
     pinMode(BUTTON_PIN, INPUT_PULLUP);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    // setup no espera indefinidamente a que aparezca la red.
+    // setup does not wait indefinitely for the network to appear.
     uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) delay(100);
-    // Configurar I2S para INMP441
+    // Configure I2S for the INMP441
     i2s_config_t i2s_mic_config = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
         .sample_rate = 16000,
@@ -60,7 +60,7 @@ void setup() {
         .data_in_num = I2S_MIC_SD
     };
 
-    // Configurar I2S para MAX98357A con buffers optimizados
+    // Configure I2S for the MAX98357A with tuned buffers
     i2s_config_t i2s_spk_config = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
         .sample_rate = 16000,
@@ -69,7 +69,7 @@ void setup() {
         .communication_format = I2S_COMM_FORMAT_STAND_I2S,
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
         .dma_buf_count = 8,          // Ajustado a 8
-        .dma_buf_len = 1024,         // Ajustado a 1024 (máximo permitido)
+        .dma_buf_len = 1024,         // Set to 1024 (maximum allowed)
         .use_apll = false,
         .tx_desc_auto_clear = true
     };
@@ -82,8 +82,8 @@ void setup() {
         .data_in_num = -1
     };
 
-    // Instalar drivers I2S
-    Serial.println("🎯 Configurando I2S para micrófono...");
+    // Install I2S drivers
+    Serial.println("Configuring I2S for the microphone...");
     ESP_ERROR_CHECK(i2s_driver_install(I2S_MIC_PORT, &i2s_mic_config, 0, NULL));
     ESP_ERROR_CHECK(i2s_set_pin(I2S_MIC_PORT, &mic_pin_config));
     
@@ -91,7 +91,7 @@ void setup() {
     ESP_ERROR_CHECK(i2s_driver_install(I2S_SPK_PORT, &i2s_spk_config, 0, NULL));
     ESP_ERROR_CHECK(i2s_set_pin(I2S_SPK_PORT, &spk_pin_config));
     
-    // Limpiar buffers
+    // Clear buffers
     i2s_zero_dma_buffer(I2S_MIC_PORT);
     i2s_zero_dma_buffer(I2S_SPK_PORT);
 
@@ -102,14 +102,14 @@ void setup() {
         Serial.println("No se pudo reservar la cola/tarea de audio.");
         while (true) delay(1000);
     }
-    Serial.println("Listo: mantén pulsado para hablar y suelta para responder.");
+    Serial.println("Ready: hold to speak, release to get an answer.");
 }
 
 String endpoint(const String& suffix) {
     return String(AUDIO_SERVER_URL) + "/recordings/" + recordingId + suffix;
 }
 
-// El mismo ID y secuencia se conservan durante todos los reintentos.
+// The same ID and sequence are kept across every retry.
 bool sendBlock(const String& suffix, const uint8_t* data, size_t length) {
     for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
         HTTPClient http;
@@ -158,7 +158,7 @@ bool playFrames(WiFiClient* client) {
                           (uint32_t(header[2]) << 16) | (uint32_t(header[3]) << 24);
         if (length == 0) {
             if (!heardAudio) return false;
-            // Añade suficiente silencio para drenar los 8 buffers DMA antes de parar.
+            // Add enough silence to drain the 8 DMA buffers before stopping.
             memset(pcm, 0, sizeof(pcm));
             for (int i = 0; i < 10; ++i) if (!writeSpeaker(pcm, sizeof(pcm))) return false;
             return true;
@@ -208,9 +208,9 @@ void networkTask(void*) {
         } else {
             if (recordingFailed.load()) {
                 sendBlock("/abort", nullptr, 0);
-                Serial.println("Grabación descartada por pérdida de audio/red. Vuelve a intentarlo.");
+                Serial.println("Recording discarded after audio/network loss. Try again.");
             } else if (!fetchResponse(block.sequence)) {
-                Serial.println("No se pudo completar la respuesta. No se crea otra consulta automática.");
+                Serial.println("Could not complete the answer. No automatic retry is issued.");
             }
             networkBusy.store(false);
         }
@@ -224,7 +224,7 @@ void endRecording() {
     AudioBlock end{};
     end.kind = BlockKind::End;
     end.sequence = sequence;
-    // Micrófono ya detenido: esperar al consumidor aquí no pierde muestras.
+    // Microphone already stopped: waiting for the consumer here loses no samples.
     if (xQueueSend(audioQueue, &end, pdMS_TO_TICKS(50000)) != pdTRUE) {
         Serial.println("La tarea de red no responde; reiniciando para recuperar estado.");
         ESP.restart();
@@ -243,7 +243,7 @@ void loop() {
         delay(30);
         if (digitalRead(BUTTON_PIN) != LOW) return;
         if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("Sin Wi-Fi; no se inicia la grabación.");
+            Serial.println("No Wi-Fi; recording will not start.");
             waitForRelease = true;
             return;
         }

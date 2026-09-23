@@ -1,4 +1,4 @@
-"""Salida PCM que conserva las muestras durante el arranque y las pausas."""
+"""PCM output that preserves samples across start-up and pauses."""
 import queue
 import threading
 
@@ -79,7 +79,7 @@ class PCMPlayer:
     def finish(self):
         self.buffer.finished = True
         if not self.done.wait(timeout=90):
-            raise RuntimeError('La reproducción agotó el tiempo de espera.')
+            raise RuntimeError('Playback timed out.')
 
     def __exit__(self, *args):
         self.stream.abort()

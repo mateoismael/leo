@@ -1,16 +1,16 @@
-# Pulsera de voz
+# Leo
 
-Asistente de voz con botón y altavoz para llevar en la muñeca, sin cámara. Basado en el proyecto ESP32 Sunday recuperado.
+Wrist-worn voice assistant with a button and a speaker, no camera. Built on a recovered ESP32 prototype.
 
-La opción principal es **Whisper en la computadora → modelo conversacional por API → voz con gTTS**. Chatterbox Multilingual queda como alternativa local. Las alternativas futuras de comandos dentro de la pulsera e IA local en el celular están en [IA local](docs/ia-local-futuro.md).
+The main path is **Whisper on the computer → conversational model over API → speech with gTTS**. Chatterbox Multilingual remains the local alternative. Future options — on-device commands and local AI on the phone — are covered in [Local AI](docs/future-local-ai.md).
 
-## Estado
+## Status
 
-Servidor refactorizado con configuración externa, prueba por texto, prueba con WAV, precarga de Whisper y respuesta hablada progresiva. Mantiene el modo WAV original de `/audio` y añade PCM en streaming para el firmware actualizado. Se verificaron 25 pruebas Python y pruebas C++ del transporte y dos recorridos reales por API. La clave está configurada localmente y Whisper base ya está descargado. El firmware compila para ESP32 Dev Module con core 3.3.11; falta probarlo en hardware físico; no hay despliegue en nube.
+The server has been refactored with external configuration, a text-only test, a WAV test, Whisper preloading and progressive spoken responses. It keeps the original WAV mode on `/audio` and adds streaming PCM for the updated firmware. 25 Python tests and the C++ transport tests pass, along with two real end-to-end runs against the API. The key is configured locally and Whisper base is already downloaded. The firmware compiles for ESP32 Dev Module with core 3.3.11; it has not been tested on physical hardware yet, and there is no cloud deployment.
 
-## Preparación
+## Setup
 
-El entorno local ya está preparado. Para otra instalación, desde la raíz del repositorio, con Python 3.9 o posterior:
+From the repository root, with Python 3.9 or later:
 
 ```sh
 python3 -m venv .venv
@@ -18,108 +18,107 @@ python3 -m venv .venv
 cp .env.example .env
 ```
 
-Configurar `OPENAI_API_KEY` en `.env`, fuera de Git. `OPENAI_MODEL` usa `gpt-5-nano` como candidato económico inicial (modelo deprecado; comparar con `gpt-4o-mini` y `gpt-5.6-luna`); `WHISPER_MODEL` conserva `base`. Las pruebas reales de conversación llaman a la API y generan consumo.
+Set `OPENAI_API_KEY` in `.env`, outside Git. `OPENAI_MODEL` uses `gpt-5-nano` as the initial low-cost candidate (a deprecated model; compare against `gpt-4o-mini` and `gpt-5.6-luna`); `WHISPER_MODEL` stays on `base`. Real conversation tests call the API and cost money.
 
-`TTS_PROVIDER=gtts` genera rápidamente la respuesta hablada mediante un servicio externo gratuito. Requiere internet, pero no utiliza el saldo de la API conversacional. Para probar la alternativa local recuperada de `ytauto`, cambiar a `TTS_PROVIDER=chatterbox`; `CHATTERBOX_PYTHON` debe apuntar al Python de su entorno independiente. Una referencia WAV limpia de 10–20 segundos puede configurarse en `CHATTERBOX_REFERENCE`; vacío usa la voz predeterminada.
+`TTS_PROVIDER=gtts` produces the spoken reply quickly through a free external service. It needs internet but does not spend the conversational API budget. To try the recovered local alternative, switch to `TTS_PROVIDER=chatterbox`; `CHATTERBOX_PYTHON` must point at the Python of its separate environment. A clean 10–20 second WAV reference can be set in `CHATTERBOX_REFERENCE`; leaving it empty uses the default voice.
 
-Para procesar audio, instalar además:
+To process audio, also install:
 
 ```sh
 .venv/bin/python -m pip install -r server/requirements-audio.in
 ```
 
-FFmpeg debe estar instalado y disponible en PATH. Whisper descarga el modelo la primera vez que se usa; esto necesita conexión y espacio local. Al levantar el servidor, `PRELOAD_WHISPER=true` lo carga antes de aceptar audio y evita que la primera pregunta pague ese tiempo de arranque. La prueba por texto no carga Whisper.
+FFmpeg must be installed and available on PATH. Whisper downloads the model the first time it runs; that needs a connection and local disk space. On start-up, `PRELOAD_WHISPER=true` loads it before accepting audio so the first question does not pay that cost. The text-only test does not load Whisper.
 
-## Probar sin ESP32
+## Testing without an ESP32
 
-Revisar el entorno sin llamadas externas (devuelve código 1 si falta algún requisito de audio):
-
-```sh
-.venv/bin/python server/leov1ser.py --check
-```
-
-Probar solo la conversación por API:
+Check the environment without external calls (exits 1 if an audio requirement is missing):
 
 ```sh
-.venv/bin/python server/leov1ser.py --text "Hola, dime qué puedes hacer en una frase."
+.venv/bin/python server/app.py --check
 ```
 
-Probar todo el recorrido con una grabación WAV PCM16 mono a 16 kHz, de 0.2 a 60 segundos:
+Test the API conversation alone:
 
 ```sh
-.venv/bin/python server/leov1ser.py --audio recordings/pregunta.wav --output recordings/respuesta.wav
+.venv/bin/python server/app.py --text "Hello, tell me what you can do in one sentence."
 ```
 
-Se guardará la respuesta hablada y se mostrarán la transcripción, el texto y los tiempos de cada etapa. La primera transcripción incluye la carga de Whisper. `recordings/` se excluye de Git. Chatterbox tarda bastante más y se reserva para pruebas locales que no necesiten una respuesta inmediata.
-
-Para convertir una grabación a ese formato:
+Test the full path with a mono PCM16 WAV recording at 16 kHz, between 0.2 and 60 seconds:
 
 ```sh
-ffmpeg -i mi-grabacion.m4a -ar 16000 -ac 1 -c:a pcm_s16le recordings/pregunta.wav
+.venv/bin/python server/app.py --audio recordings/question.wav --output recordings/answer.wav
 ```
 
-Crear antes la carpeta `recordings` si no existe.
+The spoken reply is saved, and the transcription, the text and the timings of each stage are printed. The first transcription includes loading Whisper. `recordings/` is excluded from Git. Chatterbox takes considerably longer and is reserved for local tests that do not need an immediate answer.
 
-## Servidor y firmware
+To convert a recording to that format:
 
 ```sh
-.venv/bin/python server/leov1ser.py
+ffmpeg -i my-recording.m4a -ar 16000 -ac 1 -c:a pcm_s16le recordings/question.wav
 ```
 
-Escucha por defecto solo en `127.0.0.1:8000`; `/health` comprueba que el proceso responde, no la disponibilidad de proveedores. Para conectar el ESP32 en una red de desarrollo controlada, usar `--host 0.0.0.0`. Copiar `firmware/leov1/config.example.h` a `config.h` y completar red, contraseña y dirección HTTP del servidor.
+Create the `recordings` folder first if it does not exist.
 
-El endpoint admite bloques PCM16 mono de 16 kHz en POST `/audio` y una petición vacía con `Recording-Status: end`. Sin otra cabecera devuelve el WAV completo compatible con el firmware recuperado. Con `Response-Mode: stream`, transcribe primero y después entrega PCM16 mono de 16 kHz a medida que cada frase queda sintetizada. Este modo se conserva para clientes anteriores. El firmware actualizado usa las rutas v2 descritas abajo, con fin explícito y recuperación por ID. Audio inválido devuelve 400, demasiado grande 413, procesamiento ocupado 409 y errores detectados antes de iniciar la respuesta devuelven 502.
+## Server and firmware
 
-Esta compatibilidad es para **un dispositivo y un proceso**, sin autenticación. No usar múltiples workers ni exponer a internet. El endpoint antiguo mantiene su estado simple; el protocolo v2 incorpora IDs, secuencias, caché temporal y caducidad. El firmware antiguo espera solo 10 segundos para la respuesta y podría agotar su timeout; la primera prueba debe hacerse por CLI.
+```sh
+.venv/bin/python server/app.py
+```
 
-## Pruebas automatizadas
+By default it listens only on `127.0.0.1:8000`; `/health` confirms the process responds, not that providers are reachable. To connect the ESP32 on a controlled development network, use `--host 0.0.0.0`. Copy `firmware/wristband/config.example.h` to `config.h` and fill in the network, password and HTTP address of the server.
+
+The endpoint accepts mono PCM16 chunks at 16 kHz on POST `/audio` plus an empty request carrying `Recording-Status: end`. With no other header it returns the complete WAV compatible with the recovered firmware. With `Response-Mode: stream`, it transcribes first and then delivers mono PCM16 at 16 kHz as each sentence finishes synthesis. That mode is kept for older clients. The updated firmware uses the v2 routes described below, with an explicit end marker and recovery by ID. Invalid audio returns 400, oversized returns 413, a busy pipeline returns 409, and errors detected before the response starts return 502.
+
+This compatibility targets **one device and one process**, with no authentication. Do not run multiple workers or expose it to the internet. The old endpoint keeps its simple state; protocol v2 adds IDs, sequences, a temporary cache and expiry. The old firmware waits only 10 seconds for the answer and may time out; the first test should be done over the CLI.
+
+## Automated tests
 
 ```sh
 .venv/bin/python -m pip install httpx
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Las pruebas sustituyen proveedores externos: verifican historial, segmentación por frases, formato de audio y ambos modos del protocolo HTTP sin coste de API.
+The tests stub out external providers: they verify history, sentence segmentation, audio format and both modes of the HTTP protocol at no API cost.
 
-El estado detallado, las mediciones de streaming, sus límites y el orden de trabajo están en [Estado y próximos pasos](docs/estado-y-proximos-pasos.md).
+Detailed status, streaming measurements, their limits and the order of work are in [Status and next steps](docs/status-and-next-steps.md).
 
-## Organización y procedencia
+## Layout and provenance
 
-- `server/leov1ser.py`: versión de trabajo actual.
-- `firmware/leov1/`: firmware recuperado con configuración privada separada.
-- `legacy/leov1/leov1ser.py`: servidor conversacional original, conservado sin cambios.
-- `legacy/transcriptoraud/`: pareja anterior que transcribe y repite.
-- `docs/`: análisis histórico, hardware, plan e IA local futura.
+- `server/app.py`: current working version.
+- `firmware/wristband/`: recovered firmware with private configuration kept separate.
+- `legacy/wristband_v0/server.py`: original conversational server, kept unchanged.
+- `legacy/audio_transcriber/`: earlier pair that transcribes and repeats.
+- `docs/`: historical analysis, hardware, plan and future local AI.
 
-El repo local no tiene remoto ni publicación en GitHub. El despliegue futuro en el servidor personal está descrito en el [plan](docs/plan.md); falta preparar autenticación, HTTPS y supervisión. Las dependencias `.in` describen paquetes requeridos; los archivos `.txt`, cuando existan, capturan las versiones verificadas en el entorno de desarrollo, no garantizan compatibilidad con otro sistema.
+Dependency `.in` files describe required packages; the `.txt` files, where they exist, capture versions verified in the development environment and do not guarantee compatibility elsewhere. Future deployment on a personal server is described in the [plan](docs/plan.md); authentication, HTTPS and supervision still need work.
 
-Se mantiene Chat Completions. Ver [comparación de modelos y costes](docs/modelos-api-2026-09-09.md). Para migrar en el futuro a OpenRouter, configurar `LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY` y `OPENROUTER_MODEL`; se utiliza una clave independiente y la URL oficial de ese proveedor. Solo está preparada la ruta de texto, no voz multimodal nativa ni Gemini Live.
+Chat Completions is the current API. See the [model and cost comparison](docs/api-model-comparison.md). To migrate to OpenRouter later, set `LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`; it uses a separate key and that provider's official URL. Only the text path is prepared — not native multimodal voice, not Gemini Live.
 
-## Conversar desde la Mac
+## Talking from the Mac
 
 ```sh
-.venv/bin/python server/probar_mac.py
+.venv/bin/python server/mac_client.py
 ```
 
-El modo predeterminado ahora usa el micrófono de la Mac. Pulsa ESPACIO para grabar, habla y pulsa ESPACIO otra vez para terminar. Escucha la respuesta y repite; `q` termina. Son dos pulsaciones, no mantener la tecla apretada. Si macOS solicita permiso de micrófono para Terminal, permítelo. Whisper se carga una vez antes de la primera grabación. Cada pregunta usa la API y gTTS. Para el modo escrito, añade `--chat`. Para probar un WAV existente con Whisper, usa `--audio recordings/pregunta-simulada.wav`. Para reproducir un audio sin llamadas externas, usa `--replay recordings/respuesta-streaming.wav`.
+The default mode uses the Mac microphone. Press SPACE to record, speak, and press SPACE again to stop. Listen to the answer and repeat; `q` quits. That is two presses, not holding the key down. If macOS asks for microphone permission for Terminal, grant it. Whisper loads once before the first recording. Each question uses the API and gTTS. For written mode, add `--chat`. To test an existing WAV with Whisper, use `--audio recordings/simulated-question.wav`. To play audio back with no external calls, use `--replay recordings/streamed-answer.wav`.
 
-Instalación del soporte de micrófono (ya instalado en esta Mac):
+Installing microphone support:
 
 ```sh
 .venv/bin/python -m pip install -r server/requirements-mac.in
 ```
 
-Si no hay entrada de audio, revisa Ajustes del Sistema > Sonido > Entrada y Privacidad y seguridad > Micrófono. `--list-mics` muestra dispositivos; `--device 0` permite elegir uno por su índice. Grabación máxima: 60 segundos. El micrófono está cerrado mientras se reproduce la respuesta; aún no hay interrupción automática por voz.
+If there is no audio input, check System Settings > Sound > Input and Privacy & Security > Microphone. `--list-mics` shows devices; `--device 0` selects one by index. Maximum recording: 60 seconds. The microphone stays closed while the answer plays; there is no automatic voice interruption yet.
 
-La reproducción en Mac usa ahora sounddevice/PortAudio con búfer y silencio de preparación de 200 ms para proteger el inicio del audio. Se retiró ffplay de este recorrido.
+Mac playback now uses sounddevice/PortAudio with a buffer and 200 ms of priming silence to protect the start of the audio. ffplay was removed from this path.
 
+## Corrected firmware and protocol v2
 
-## Firmware corregido y protocolo v2
-
-El ESP32 captura audio en una tarea y lo envía en otra mediante una cola de 16 bloques. Si hay pérdida detectada o la cola se llena, descarta la grabación. Las rutas `/audio/recordings/{id}/…` deduplican bloques y conservan resultados para recuperarlos sin repetir la consulta mientras sigan en caché. Se exige un marcador de fin para distinguir una respuesta completa de un corte de red.
+The ESP32 captures audio in one task and sends it from another through a 16-chunk queue. If loss is detected or the queue fills, it discards the recording. The `/audio/recordings/{id}/…` routes deduplicate chunks and keep results so they can be recovered without repeating the query, as long as they remain cached. An end marker is required to tell a complete answer apart from a dropped connection.
 
 ```sh
 .venv/bin/python scripts/compile_firmware.py
 ```
 
-Compila una copia con credenciales de ejemplo, sin tocar la placa ni `config.h` privado. Ver [protocolo, pruebas, herramientas y límites](docs/firmware-y-protocolo.md). El servidor debe actualizarse junto con el firmware; el programa de conversación en Mac sigue funcionando con el mismo comando.
+This compiles a copy with example credentials, without touching the board or the private `config.h`. See [protocol, tests, tooling and limits](docs/firmware-and-protocol.md). The server must be updated alongside the firmware; the Mac conversation program keeps working with the same command.

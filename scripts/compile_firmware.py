@@ -1,4 +1,4 @@
-"""Compila con herramientas locales y credenciales de ejemplo; no carga la placa."""
+"""Compile with local tooling and example credentials; never flashes the board."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -7,12 +7,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / '.cache/arduino'
 cli = CACHE / 'bin/arduino-cli'
 if not cli.exists():
-    raise SystemExit('Prepara Arduino CLI según docs/firmware-y-protocolo.md.')
-sketch = CACHE / 'sketch/leov1'
+    raise SystemExit('Set up Arduino CLI as described in docs/firmware-and-protocol.md.')
+sketch = CACHE / 'sketch/wristband'
 sketch.mkdir(parents=True, exist_ok=True)
-for name in ('leov1.ino', 'transport.h'):
-    shutil.copyfile(ROOT / 'firmware/leov1' / name, sketch / name)
-shutil.copyfile(ROOT / 'firmware/leov1/config.example.h', sketch / 'config.h')
+for name in ('wristband.ino', 'transport.h'):
+    shutil.copyfile(ROOT / 'firmware/wristband' / name, sketch / name)
+shutil.copyfile(ROOT / 'firmware/wristband/config.example.h', sketch / 'config.h')
 command = [str(cli), '--config-file', str(CACHE / 'arduino-cli.yaml'), 'compile',
            '--fqbn', 'esp32:esp32:esp32', '--build-path', str(CACHE / 'build')]
 if (CACHE / 'ctags-source/ctags').exists():

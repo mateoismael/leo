@@ -1,7 +1,7 @@
-"""Genera una respuesta corta en español con Chatterbox Multilingual.
+"""Generate a short Spanish reply with Chatterbox Multilingual.
 
-Adaptado del motor local de ``ytauto/voz/tts_chatterbox.py``. Este archivo se
-ejecuta con el entorno de Chatterbox, separado del entorno del servidor.
+Adapted from a local engine. This file runs under the Chatterbox environment,
+which is separate from the server environment.
 """
 import argparse
 import re
@@ -12,7 +12,7 @@ MAX_CHARS = 280
 
 
 def split_text(text, limit=MAX_CHARS):
-    """Divide texto corto sin cortar oraciones siempre que sea posible."""
+    """Split short text without breaking sentences where possible."""
     sentences = re.split(r"(?<=[.!?…])\s+", text.replace("\n", " "))
     chunks, current = [], ""
     for sentence in sentences:
@@ -38,13 +38,13 @@ def main():
     args = parser.parse_args()
     text = args.text.strip()
     if not text:
-        parser.error("El texto está vacío.")
+        parser.error("The text is empty.")
 
     import torch
     import torchaudio as ta
     from chatterbox.mtl_tts import ChatterboxMultilingualTTS
 
-    # En esta máquina MPS provocó swap; el motor recuperado usa CPU por defecto.
+    # MPS caused swapping on this machine; the recovered engine defaults to CPU.
     device = "cpu"
     model = ChatterboxMultilingualTTS.from_pretrained(device=device)
     chunks = split_text(text)

@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 from fastapi import HTTPException
-from server.leov1ser import create_app
+from server.app import create_app
 from server.recordings import RecordingStore
 
 
@@ -19,7 +19,7 @@ def decode(data):
             return bytes(audio), size, data
         audio.extend(data[:size])
         data = data[size:]
-    raise AssertionError('Falta fin explícito')
+    raise AssertionError('Missing explicit end')
 
 
 class RecordingTests(unittest.TestCase):
