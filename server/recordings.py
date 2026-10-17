@@ -81,7 +81,13 @@ class RecordingStore:
     def end(self, key, block_count):
         with self.lock:
             job = self.get(key)
-            if block_count != len(job.blocks) or len(job.pcm) < 6400:
+            if block_count != len(job.blocks):
+                raise HTTPException(400, 'Recording incomplete or too short.')
+            if len(job.pcm) < 6400:
+                # Final: free the cache slot so short presses cannot fill it.
+                if job.state == 'uploading':
+                    job.state = 'aborted'
+                    job.pcm.clear()
                 raise HTTPException(400, 'Recording incomplete or too short.')
             if job.state == 'uploading':
                 if not self.pipeline_lock.acquire(blocking=False):
@@ -110,7 +116,9 @@ class RecordingStore:
         source = None
         terminal = 0xffffffff
         try:
-            _, source = self.assistant.prepare_stream(bytes(job.pcm))
+            started = time.monotonic()
+            text, source = self.assistant.prepare_stream(bytes(job.pcm))
+            print(f'Heard ({len(job.pcm) / 32000:.1f} s): {text!r}', flush=True)
             total = 0
             for chunk in source:
                 if len(chunk) % 2:
@@ -123,11 +131,12 @@ class RecordingStore:
                     with job.condition:
                         job.frames.append(struct.pack('<I', len(part)) + part)
                         job.condition.notify_all()
+            print(f'Answer audio: {total / 32000:.1f} s, ready in {time.monotonic() - started:.1f} s', flush=True)
             if total:
                 terminal = 0
-        except Exception:
-            # Never send provider details or credentials to the device.
-            pass
+        except Exception as exc:
+            # Never send provider details or credentials to the device; log locally only.
+            print(f'Pipeline failed: {type(exc).__name__}: {exc}', flush=True)
         finally:
             try:
                 if source is not None and hasattr(source, 'close'):

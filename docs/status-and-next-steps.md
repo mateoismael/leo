@@ -203,3 +203,24 @@ confirming, the pins reviewing and a bench test running on both normal and slow
 networks. Mac mode keeps SPACE for the microphone and sounddevice playback.
 
 Details and commands: [Firmware and protocol](firmware-and-protocol.md).
+
+## First physical test — 16 October 2026
+
+The voice path now works on real hardware: ESP32 B + INMP441 + MAX98357 +
+speaker + button, USB power, server on the Mac. Two questions were transcribed
+word for word and answered aloud. Per-part results, wiring and flash backups
+are in [hardware](hardware.md).
+
+Server fixes made during the test:
+
+- A recording rejected as too short (under 0.2 s) stayed in `uploading` and
+  kept its cache slot. Four of them filled the cache and every new press got
+  429. Too-short recordings are now marked aborted and free the slot.
+- Pipeline errors were swallowed silently. They are now logged locally (never
+  sent to the device), together with the transcription and the length and
+  ready time of each answer.
+
+Still open: latency from button release to first sound was not measured with
+an instrument; ready times of 3.4–6.7 s come from the server log. The ESP32
+does not report a successful answer on Serial. Battery, TP4056, PAM8403, the
+other speakers, board A, the ESP32-S3 and the camera are untested.
