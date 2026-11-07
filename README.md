@@ -8,7 +8,9 @@ The main path is **Whisper on the computer → conversational model over API →
 
 ## Status
 
-The server has been refactored with external configuration, a text-only test, a WAV test, Whisper preloading and progressive spoken responses. It keeps the original WAV mode on `/audio` and adds streaming PCM for the updated firmware. 25 Python tests and the C++ transport tests pass, along with two real end-to-end runs against the API. The key is configured locally and Whisper base is already downloaded. The firmware compiles for ESP32 Dev Module with core 3.3.11; it has not been tested on physical hardware yet, and there is no cloud deployment.
+**Works end to end on real hardware since 16 October 2026.** An ESP32 with an INMP441 microphone, a MAX98357 amplifier, a speaker and a button, powered over USB and talking over Wi-Fi to the server on a Mac, transcribed two spoken questions word for word and answered them aloud. Battery, final board and enclosure are still pending, and there is no cloud deployment. Details in [First physical test](docs/status-and-next-steps.md#first-physical-test--16-october-2026) and [Hardware](docs/hardware.md).
+
+The server has been refactored with external configuration, a text-only test, a WAV test, Whisper preloading and progressive spoken responses. It keeps the original WAV mode on `/audio` and adds streaming PCM for the updated firmware. 25 Python tests and the C++ transport tests pass, along with two real end-to-end runs against the API. The key is configured locally and Whisper base is already downloaded. The firmware compiles for ESP32 Dev Module with core 3.3.11.
 
 ## Setup
 
